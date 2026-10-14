@@ -29,7 +29,7 @@ dist:
 		mkdir -p dist/$$name && \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' -o dist/$$name/cswitch ./cmd/cswitch && \
 		cp LICENSE README.md README.zh-CN.md README.ja.md dist/$$name/ && \
-		tar -C dist -czf dist/$$name.tar.gz $$name && rm -rf dist/$$name || exit 1; \
+		COPYFILE_DISABLE=1 tar --no-xattrs -C dist -czf dist/$$name.tar.gz $$name && rm -rf dist/$$name || exit 1; \
 	done
 	cd dist && shasum -a 256 *.tar.gz > checksums.txt
 
