@@ -38,6 +38,7 @@ const (
 type sandbox struct {
 	t   *testing.T
 	dir string
+	api *fakeAPI
 }
 
 func newSandbox(t *testing.T) *sandbox {
@@ -51,7 +52,13 @@ func newSandbox(t *testing.T) *sandbox {
 	t.Setenv("CSWITCH_DESKTOP_APP", "cswitch-e2e-no-such-app")
 	t.Setenv("CSWITCH_CLAUDE_PROC", "cswitch-e2e-no-such-proc")
 	i18n.SetLang("en")
-	s := &sandbox{t, dir}
+	s := &sandbox{t: t, dir: dir}
+	s.api = newFakeAPI(t, map[string][2]string{
+		"alice": {uuidA, "alice@example.com"},
+		"bob":   {uuidB, "bob@example.com"},
+		"carol": {uuidC, "carol@example.com"},
+		"dave":  {"dddddddd-0000-0000-0000-00000000000d", "dave@example.com"},
+	})
 	t.Cleanup(func() {
 		for _, name := range []string{"a", "b"} {
 			store.Remove(name)
@@ -185,21 +192,64 @@ func TestSwitchBothApps(t *testing.T) {
 	}
 }
 
-// A refused switch must not leave one app switched and the other not.
-func TestUseRefusalChangesNothing(t *testing.T) {
+// Logins no profile holds are saved automatically when switching away, so
+// nothing is lost and no separate "add" is needed.
+func TestUnsavedLoginsAreSavedAutomatically(t *testing.T) {
 	s := newSandbox(t)
 	s.setup()
-	s.loginDesktop("carol", uuidC) // unsaved Desktop account
+	s.loginDesktop("carol", uuidC)                              // Desktop on an unsaved account
+	s.loginCode("dave", "dddddddd-0000-0000-0000-00000000000d") // Code on another
 
-	err := s.run("use", "a", "--no-launch")
-	if err == nil || !strings.Contains(err.Error(), "not saved") {
-		t.Fatalf("expected refusal, got %v", err)
+	s.mustRun("use", "a", "--no-launch")
+	if codeEmail(t) != "alice@example.com" || desktop.CurrentAccount() != uuidA {
+		t.Fatalf("not switched to alice")
 	}
-	if got := codeEmail(t); got != "bob@example.com" {
-		t.Errorf("Code was switched to %s despite the refusal", got)
+	dave, err := store.Load("dave")
+	if err != nil || !dave.HasCode || dave.Email != "dave@example.com" {
+		t.Errorf("Code login not auto-saved as \"dave\": %+v, %v", dave, err)
 	}
+	carol, err := store.Load("desktop-cccccccc")
+	if err != nil || !carol.HasDesktop {
+		t.Fatalf("Desktop login not auto-saved: %+v, %v", carol, err)
+	}
+
+	// The auto-saved logins can be switched back to, and renamed.
+	s.mustRun("desktop-cccccccc", "--no-launch")
+	if desktop.CurrentAccount() != uuidC || readDesktop(t, "Cookies") != "cookies-carol" {
+		t.Error("could not switch back to the auto-saved Desktop login")
+	}
+	s.mustRun("rename", "desktop-cccccccc", "carol")
+	if p, err := store.Load("carol"); err != nil || !p.HasDesktop {
+		t.Errorf("rename: %+v, %v", p, err)
+	}
+	s.mustRun("use", "a", "--no-launch", "--desktop-only")
+	s.mustRun("carol", "--no-launch")
 	if desktop.CurrentAccount() != uuidC {
-		t.Errorf("Desktop changed despite the refusal")
+		t.Error("renamed profile's Desktop login does not restore")
+	}
+}
+
+// "add <name>" for an account saved under an automatic name renames it.
+func TestAddNameRenamesAutoProfile(t *testing.T) {
+	s := newSandbox(t)
+	s.loginCode("alice", uuidA)
+	s.loginDesktop("bob", uuidB)
+	s.mustRun("add") // alice -> "alice", bob's Desktop -> "desktop-bbbbbbbb"
+	if _, err := store.Load("alice"); err != nil {
+		t.Fatalf("Code account not saved by email: %v", err)
+	}
+	if _, err := store.Load("desktop-bbbbbbbb"); err != nil {
+		t.Fatalf("Desktop account not auto-saved: %v", err)
+	}
+	s.mustRun("add", "bob", "--desktop-only")
+	if _, err := store.Load("desktop-bbbbbbbb"); err == nil {
+		t.Error("auto-named profile still exists after naming it")
+	}
+	if p, err := store.Load("bob"); err != nil || !p.HasDesktop {
+		t.Errorf("bob = %+v, %v", p, err)
+	}
+	if err := s.run("add", "bob", "--code-only"); err == nil {
+		t.Error("giving alice's Code login the name of bob's account should fail")
 	}
 }
 
@@ -242,7 +292,7 @@ func TestStaleOAuthAccountRepaired(t *testing.T) {
 	}
 }
 
-func TestUsageDoesNotRefreshLiveTokenUnderRunningClaude(t *testing.T) {
+func TestUsageRefreshesLiveToken(t *testing.T) {
 	s := newSandbox(t)
 	s.setup() // Code is bob
 	var refreshes int
@@ -252,11 +302,11 @@ func TestUsageDoesNotRefreshLiveTokenUnderRunningClaude(t *testing.T) {
 			refreshes++
 			json.NewEncoder(w).Encode(map[string]any{"access_token": "dummy-new", "refresh_token": "dummy-r-new", "expires_in": 3600})
 		case "/usage":
-			if r.Header.Get("Authorization") == "Bearer dummy-expired" {
+			if r.Header.Get("Authorization") != "Bearer dummy-new" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			fmt.Fprint(w, `{"five_hour":{"utilization":10,"resets_at":"2030-01-01T00:00:00Z"}}`)
+			fmt.Fprint(w, `{"five_hour":{"utilization":10,"resets_at":"2030-01-01T00:00:00Z"},"iguana_necktie":{"utilization":0}}`)
 		}
 	}))
 	defer srv.Close()
@@ -266,28 +316,28 @@ func TestUsageDoesNotRefreshLiveTokenUnderRunningClaude(t *testing.T) {
 	expired := strings.Replace(creds("expired", time.Now().Add(-time.Hour)), "dummy-r-expired", "dummy-r-bob", 1)
 	keychain.Set(claudecode.KeychainService(), os.Getenv("USER"), expired)
 
-	// Stand-in for a running claude process.
+	// A running claude no longer blocks the refresh: concurrent claude
+	// sessions share and refresh the same keychain login the same way.
 	proc := exec.Command("sleep", "60")
 	if err := proc.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer proc.Process.Kill()
 	t.Setenv("CSWITCH_CLAUDE_PROC", "sleep")
-	if !claudecode.Running() {
-		t.Skip("cannot see the stand-in process with pgrep in this environment")
-	}
-	p, _ := store.Load("b")
-	if _, err := profileUsage(t.Context(), p, true); err == nil || refreshes != 0 {
-		t.Fatalf("live token refreshed under a running claude (err=%v, refreshes=%d)", err, refreshes)
-	}
 
-	t.Setenv("CSWITCH_CLAUDE_PROC", "cswitch-e2e-no-such-proc")
+	p, _ := store.Load("b")
 	r, err := profileUsage(t.Context(), p, true)
-	if err != nil || refreshes != 1 || len(r.Windows) != 1 {
-		t.Fatalf("refresh without running claude: %v, refreshes=%d", err, refreshes)
+	if err != nil || refreshes != 1 {
+		t.Fatalf("usage: %v, refreshes=%d", err, refreshes)
+	}
+	if len(r.Windows) != 2 {
+		t.Errorf("windows = %+v", r.Windows)
 	}
 	if got := liveToken(t); got != "dummy-new" {
 		t.Errorf("refreshed token not written back to Claude Code: %s", got)
+	}
+	if raw, _ := store.Secret("b", "code"); !strings.Contains(raw, "dummy-new") {
+		t.Error("refreshed token not saved to the profile")
 	}
 }
 
@@ -313,7 +363,8 @@ func TestLargeDesktopLogin(t *testing.T) {
 }
 
 // usage must find the live account by its keychain token even when a running
-// claude session has written a stale account into ~/.claude.json.
+// claude session has written a stale account into ~/.claude.json, so the
+// refreshed token goes back into Claude Code's own credentials.
 func TestUsageLiveAccountByToken(t *testing.T) {
 	s := newSandbox(t)
 	s.setup() // Code is bob
@@ -337,21 +388,11 @@ func TestUsageLiveAccountByToken(t *testing.T) {
 	s.mustRun("add", "b", "--code-only")
 	s.writeAccount("alice", uuidA) // stale write by an old claude session
 
-	proc := exec.Command("sleep", "60")
-	if err := proc.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer proc.Process.Kill()
-	t.Setenv("CSWITCH_CLAUDE_PROC", "sleep")
-	if !claudecode.Running() {
-		t.Skip("cannot see the stand-in process in this environment")
-	}
-
 	s.mustRun("usage")
-	if refreshes != 0 {
-		t.Errorf("bob's live token was refreshed under a running claude (%d refreshes)", refreshes)
+	if refreshes != 1 {
+		t.Errorf("refreshes = %d, want 1 (only bob's expired token)", refreshes)
 	}
-	if got := liveToken(t); got != "dummy-expired" {
-		t.Errorf("live token changed: %s", got)
+	if got := liveToken(t); got != "dummy-new" {
+		t.Errorf("bob was not treated as the live account; Claude Code still has %s", got)
 	}
 }

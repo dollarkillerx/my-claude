@@ -5,25 +5,17 @@
 Switch between multiple Claude accounts with one command, in **Claude Code** and **Claude Desktop** at the same time (macOS), or in Claude Code (Linux).
 
 ```console
-$ cswitch list
-ACTIVE  NAME      EMAIL                 ORG          PLAN  SAVED
-CD      work      me@company.com        Company      max   code,desktop
--       personal  me@example.com        Personal     pro   code,desktop
-
-$ cswitch use personal
+$ cswitch
+#  NAME      EMAIL                 PLAN  5H   7D   IN USE
+1  personal  me@example.com        pro   21%  48%
+2  work      me@company.com        max   4%   13%  * Code+Desktop
+Switch to (number or name, Enter to cancel): 1
 Quitting Claude Desktop…
-Synced Desktop sessions across 2 account folders: 3 copied, 0 removed
 Opening Claude Desktop…
 Claude Desktop → personal
 Claude Code → personal (me@example.com)
 
-$ cswitch usage
-  personal  me@example.com  pro
-    5h         [████░░░░░░░░░░░░░░░░]  21.0%  resets in 2h14m (10-14 17:30)
-    7d         [██████████░░░░░░░░░░]  48.0%  resets in 3d6h (10-18 09:00)
-* work      me@company.com  max
-    5h         [█░░░░░░░░░░░░░░░░░░░]   4.0%  resets in 4h40m (10-14 19:56)
-    7d         [███░░░░░░░░░░░░░░░░░]  13.0%  resets in 5d1h (10-20 04:00)
+$ cswitch work          # or switch directly by name
 ```
 
 > **Unofficial.** cswitch is a community tool and is not affiliated with or endorsed by Anthropic. It works with the apps' local storage, whose format can change in any release. See [Limitations](#limitations).
@@ -34,7 +26,7 @@ $ cswitch usage
 - **Claude Code and Claude Desktop together.** Each can also be switched on its own with `--code-only` / `--desktop-only`, and the two apps don't have to be on the same account.
 - **Usage at a glance.** `cswitch usage` queries the 5-hour and weekly limits of every account in parallel, using the same endpoint as Claude Code's `/usage`.
 - **Shared Desktop history.** Local Claude Desktop sessions (Code tab and Cowork) are merged across accounts on every switch, so each account sees all of them.
-- **Safe by design.** Saved logins live in the macOS keychain. Every file is backed up before it is changed, a failed switch is rolled back, and cswitch refuses to overwrite a login you haven't saved.
+- **Safe by design.** Saved logins live in the macOS keychain. Every file is backed up before it is changed, a failed switch is rolled back, and the current logins are saved automatically before every switch, so none is ever lost.
 - **English, 简体中文, 日本語.** Picked from your system language, or set with `--lang`.
 
 ## Platforms
@@ -72,73 +64,69 @@ go install github.com/dollarkillerx/my-claude/cmd/cswitch@latest
 
 ## Getting started
 
-### 1. Save the accounts you're logged in with now
-
 ```bash
-cswitch add work
+cswitch
 ```
 
-This saves the account Claude Code is logged in as. If Claude Desktop is logged in as the same account, its login is saved too. Desktop restarts briefly so its files can be copied consistently.
+That's it: running `cswitch` with no arguments lists your accounts with their usage and lets you pick one to switch to. The accounts you're logged in with are saved automatically, named after their email address (`alex@example.com` becomes `alex`). A Desktop-only account, whose email Desktop doesn't expose, is saved as `desktop-<id>`; give it a name with `cswitch rename desktop-1a2b3c4d work`.
 
-If Desktop is logged in as a **different** account, cswitch tells you. Save it under its own name:
+### Add another account
 
-```bash
-cswitch add personal --desktop-only
-```
-
-### 2. Add more accounts
-
-> ⚠️ **Never use the apps' own "Log out" to add an account.** Logging out revokes the tokens on the server, and the login you saved stops working.
-
-`cswitch login` logs in to another account without logging out:
+> ⚠️ **Never use the apps' own "Log out" to add an account.** Logging out revokes the tokens on the server, and the saved login stops working.
 
 ```bash
-cswitch login personal
+cswitch login
 ```
 
-- **Claude Code:** saves the current login, then runs `claude auth login` for the new account.
-- **Claude Desktop:** quits Desktop, clears its login locally (no server-side logout), reopens it, and waits for you to sign in.
+This saves the current login, then runs `claude auth login` so you can sign in to another account. When you're done, both accounts are saved.
 
-You can also do one side at a time with `--code-only` or `--desktop-only`. To fill in the missing half of a profile later, log in to that account in the app and run `cswitch add <name>` again.
+- `cswitch login --desktop` also signs in Claude Desktop with the new account. cswitch quits Desktop, clears its login locally (no server-side logout), reopens it, and waits for you to sign in.
+- `cswitch login --desktop-only` does Desktop alone.
+- Pass a name (`cswitch login work`) to choose the profile name yourself.
 
-### 3. Switch
+### Switch
 
 ```bash
-cswitch use personal
+cswitch work
 ```
 
-Restart any running `claude` sessions afterwards; until then they keep using the old account.
+`cswitch <name>` switches both apps; `--code-only` / `--desktop-only` switch one. The current logins are saved before every switch. Restart running `claude` sessions afterwards; until then they keep using the old account.
+
+### Set the language
+
+```bash
+cswitch lang zh
+```
+
+The choice is remembered for every later run. `cswitch lang auto` follows the system again.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `cswitch add <name>` | Save the current login as a profile, or update it. `--code-only`, `--desktop-only` |
-| `cswitch login <name>` | Log in to another account without logging out, and save it. `--code-only`, `--desktop-only`, `--force` |
-| `cswitch use <name>` | Switch both apps (alias `switch`). `--code-only`, `--desktop-only`, `--no-launch`, `--force` |
-| `cswitch list` | List profiles (alias `ls`). `C` = active in Claude Code, `D` = active in Claude Desktop |
-| `cswitch current` | Show which profile each app is using |
-| `cswitch usage [name...]` | Show plan usage of all or the given profiles |
+| `cswitch` | List accounts with usage and pick one to switch to |
+| `cswitch <name>` | Switch to an account (same as `cswitch use <name>`) |
+| `cswitch login [name]` | Log in to another account without logging out. `--desktop`, `--desktop-only` |
+| `cswitch usage [name...]` | Show plan usage. `--all` also shows internal entries |
+| `cswitch list` | List saved accounts (alias `ls`) |
+| `cswitch current` | Show which account each app is using |
+| `cswitch add [name]` | Save the current logins now (rarely needed; switching saves them) |
+| `cswitch rename <old> <new>` | Rename an account (alias `mv`) |
+| `cswitch remove <name>` | Delete a saved account (alias `rm`). Nothing is logged out. `-y` |
+| `cswitch lang [en\|zh\|ja\|auto]` | Show or set the language; the choice is remembered |
 | `cswitch sync` | Share Desktop's local sessions across accounts now (also runs on every switch) |
-| `cswitch remove <name>` | Delete a saved profile (alias `rm`). Nothing is logged out. `-y` |
 
-Global flags: `--lang en|zh|ja`, `--version`. Run `cswitch <command> --help` for details.
-
-### `--force`
-
-cswitch refuses to switch away from a login that isn't saved in any profile, because that login would be lost. `--force` switches anyway.
+Switch flags (for `cswitch <name>` and `use`): `--code-only`, `--desktop-only`, `--no-launch`, and `--force`. `--force` discards a Desktop login whose account can't be identified, which cswitch otherwise refuses to overwrite. Global flags: `--lang`, `--version`.
 
 ## Language
 
-The language comes from, in order: `--lang`, `CSWITCH_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`, and the macOS system language.
+The language comes from, in order:
 
-```bash
-cswitch --lang ja list
-```
-
-```bash
-export CSWITCH_LANG=zh
-```
+1. `--lang`, for one run
+2. `CSWITCH_LANG`
+3. the language saved with `cswitch lang`
+4. `LC_ALL`, `LC_MESSAGES`, `LANG`
+5. the macOS system language
 
 ## Shared history: what is and isn't shared
 
@@ -180,6 +168,7 @@ To uninstall, run `cswitch remove <name>` for each profile, delete `~/.config/cs
 ## Limitations
 
 - **Linux: Claude Code only.** The Desktop commands and flags report that Desktop isn't available. Saved secrets are encrypted with a key in `~/.config/cswitch/master.key` (mode 0600), because there's no keychain. That's the same protection Claude Code gives its own `~/.claude/.credentials.json` there.
+- **Over SSH on macOS, unlock the keychain first** with `security unlock-keychain ~/Library/Keychains/login.keychain-db`. The login keychain is only unlocked by a login at the screen; `claude` itself has the same limitation.
 - **`CLAUDE_CONFIG_DIR` isn't supported.** cswitch expects Claude Code's default locations.
 - **Depends on undocumented local formats.** A Claude Code or Claude Desktop update can break cswitch. If it finds something it doesn't recognize, it stops with an error instead of writing.
 - **Running `claude` sessions keep the old account** until restarted. They may also write the old account back into `~/.claude.json`; cswitch detects this from the keychain token and repairs it on the next switch.

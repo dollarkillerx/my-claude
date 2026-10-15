@@ -1,6 +1,8 @@
 package keychain
 
 import (
+	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -53,5 +55,20 @@ func TestSecurityErrorsAreRedacted(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "SECRET") {
 		t.Errorf("secret leaked into error: %v", err)
+	}
+}
+
+func TestExitCodesMapToSentinels(t *testing.T) {
+	for code, want := range map[int]error{44: ErrNotFound, 36: ErrLocked} {
+		err := exec.Command("/bin/sh", "-c", fmt.Sprintf("exit %d", code)).Run()
+		if got := exitErr(err); got != want {
+			t.Errorf("exit %d -> %v, want %v", code, got, want)
+		}
+	}
+	if exitErr(exec.Command("/bin/sh", "-c", "exit 1").Run()) != nil {
+		t.Error("other exit codes must not map to a sentinel")
+	}
+	if !strings.Contains(ErrLocked.Error(), "unlock-keychain") {
+		t.Errorf("locked message lacks the fix: %q", ErrLocked.Error())
 	}
 }

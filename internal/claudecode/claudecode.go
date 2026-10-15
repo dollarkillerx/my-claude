@@ -286,7 +286,9 @@ func ReadAccount() (json.RawMessage, *Account, error) {
 func WriteAccount(raw json.RawMessage, backupDir string) error {
 	path := ConfigPath()
 	m, err := fsutil.ReadJSONObject(path)
-	if err != nil {
+	if os.IsNotExist(err) {
+		m = map[string]json.RawMessage{} // Claude Code creates it on first run
+	} else if err != nil {
 		return err
 	}
 	if err := fsutil.Backup(path, backupDir); err != nil {

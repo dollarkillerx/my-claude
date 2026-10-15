@@ -5,25 +5,17 @@
 複数の Claude アカウントをコマンド一つで切り替えます。macOS では **Claude Code** と **Claude Desktop** の両方に同時に反映され、Linux では Claude Code を切り替えます。
 
 ```console
-$ cswitch list
-使用中  名前      メール                組織         プラン  保存済み
-CD      work      me@company.com        Company      max     code,desktop
--       personal  me@example.com        Personal     pro     code,desktop
-
-$ cswitch use personal
+$ cswitch
+#  名前      メール                プラン  5時間  7日  使用中
+1  personal  me@example.com        pro     21%    48%
+2  work      me@company.com        max     4%     13%  * Code+Desktop
+切り替え先（番号または名前、Enter でキャンセル）: 1
 Claude Desktop を終了しています…
-2 個のアカウントフォルダ間で Desktop セッションを同期しました: コピー 3 件、削除 0 件
 Claude Desktop を起動しています…
 Claude Desktop → personal
 Claude Code → personal（me@example.com）
 
-$ cswitch usage
-  personal  me@example.com  pro
-    5h         [████░░░░░░░░░░░░░░░░]  21.0%  2 時間 14 分後にリセット（10-14 17:30）
-    7d         [██████████░░░░░░░░░░]  48.0%  3 日 6 時間後にリセット（10-18 09:00）
-* work      me@company.com  max
-    5h         [█░░░░░░░░░░░░░░░░░░░]   4.0%  4 時間 40 分後にリセット（10-14 19:56）
-    7d         [███░░░░░░░░░░░░░░░░░]  13.0%  5 日 1 時間後にリセット（10-20 04:00）
+$ cswitch work          # 名前で直接切り替えることもできます
 ```
 
 > **非公式ツールです。** cswitch はコミュニティによるツールで、Anthropic とは関係がなく、承認も受けていません。アプリのローカルストレージを直接扱うため、その形式はどのリリースでも変わる可能性があります。[制限事項](#制限事項)を参照してください。
@@ -37,7 +29,7 @@ $ cswitch usage
 - **安全設計。**
   - 保存したログイン状態は macOS のキーチェーンに置かれます。
   - ファイルは変更前に必ずバックアップされ、切り替えに失敗するとロールバックされます。
-  - まだ保存していないログインは上書きしません。
+  - 現在のログインは切り替え前に自動で保存されるため、失われることはありません。
 - **English・简体中文・日本語に対応。** システムの言語に合わせて表示され、`--lang` で指定もできます。
 
 ## 対応プラットフォーム
@@ -75,73 +67,43 @@ go install github.com/dollarkillerx/my-claude/cmd/cswitch@latest
 
 ## はじめに
 
-### 1. 現在ログインしているアカウントを保存する
-
 ```bash
-cswitch add work
+cswitch
 ```
 
-Claude Code でログイン中のアカウントを保存します。Claude Desktop が同じアカウントでログインしていれば、そのログインも保存します。ファイルを一貫した状態でコピーするため、Desktop は一時的に再起動します。
+これだけです。引数なしで `cswitch` を実行すると、アカウントと使用量が一覧表示され、番号を入力して切り替えられます。ログイン中のアカウントはメールアドレスから名前を付けて自動保存されます（`alex@example.com` は `alex`）。Desktop のみのアカウントはメールアドレスが取得できないため `desktop-<id>` として保存されます。`cswitch rename desktop-1a2b3c4d work` で名前を付けられます。
 
-Desktop が**別の**アカウントでログインしている場合は、cswitch がそのことを知らせます。別の名前で保存してください:
-
-```bash
-cswitch add personal --desktop-only
-```
-
-### 2. アカウントを追加する
+### 別のアカウントを追加する
 
 > ⚠️ **アカウントの追加にアプリの「ログアウト」は使わないでください。** ログアウトするとサーバー側でトークンが無効になり、保存したログインも使えなくなります。
 
-`cswitch login` なら、ログアウトせずに別のアカウントにログインできます:
-
 ```bash
-cswitch login personal
+cswitch login
 ```
 
-- **Claude Code**: 現在のログインを保存してから、`claude auth login` で新しいアカウントにログインします。
-- **Claude Desktop**: Desktop を終了し、ローカルのログイン状態だけを消去（サーバー側ではログアウトしません）して再起動し、サインインを待ちます。
+現在のログインを保存してから `claude auth login` を実行し、別のアカウントにログインできるようにします。完了すると両方のアカウントが保存されています。
 
-`--code-only` や `--desktop-only` で片方ずつ行うこともできます。片方しか保存されていないプロファイルは、後でそのアプリでアカウントにログインし、`cswitch add <名前>` をもう一度実行すれば補えます。
+- `cswitch login --desktop`: 新しいアカウントで Claude Desktop にもサインインします。cswitch は Desktop を終了し、ローカルのログイン状態だけを消去（サーバー側ではログアウトしません）して再起動し、サインインを待ちます。
+- `cswitch login --desktop-only`: Desktop のみ。
+- 名前を自分で付けるには、`cswitch login work` のように指定します。
 
-### 3. 切り替える
-
-```bash
-cswitch use personal
-```
-
-切り替え後は、実行中の `claude` セッションを再起動してください。再起動するまでは元のアカウントのままです。
-
-## コマンド一覧
-
-| コマンド | 説明 |
-| --- | --- |
-| `cswitch add <名前>` | 現在のログインをプロファイルとして保存（既存なら更新）。`--code-only`、`--desktop-only` |
-| `cswitch login <名前>` | ログアウトせずに別のアカウントにログインして保存。`--code-only`、`--desktop-only`、`--force` |
-| `cswitch use <名前>` | 両方のアプリを切り替え（エイリアス `switch`）。`--code-only`、`--desktop-only`、`--no-launch`、`--force` |
-| `cswitch list` | プロファイル一覧（エイリアス `ls`）。`C` = Claude Code で使用中、`D` = Claude Desktop で使用中 |
-| `cswitch current` | 各アプリが使用中のプロファイルを表示 |
-| `cswitch usage [名前...]` | 全（または指定した）プロファイルの使用量を表示 |
-| `cswitch sync` | Desktop のローカルセッションを今すぐ全アカウントで共有（切り替え時にも自動実行） |
-| `cswitch remove <名前>` | 保存済みプロファイルを削除（エイリアス `rm`）。ログアウトはしません。`-y` |
-
-グローバルオプション: `--lang en|zh|ja`、`--version`。詳細は `cswitch <コマンド> --help` を参照してください。
-
-### `--force`
-
-現在のログインがどのプロファイルにも保存されていない場合、切り替えるとそのログインは失われるため、cswitch は切り替えを拒否します。`--force` を付けると強制的に切り替えます。
-
-## 言語
-
-表示言語は次の順で決まります: `--lang`、`CSWITCH_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`、macOS のシステム言語。
+### 切り替える
 
 ```bash
-cswitch --lang ja list
+cswitch work
 ```
 
-```bash
-export CSWITCH_LANG=ja
-```
+`cswitch <名前>` で両方のアプリを切り替えます。`--code-only` / `--desktop-only` で片方だけ切り替えます。切り替えのたびに、まず現在のログイン状態を保存します。切り替え後は実行中の `claude` セッションを再起動してください。再起動するまでは元のアカウントのままです。
+
+### 言語
+
+表示言語は次の順で決まります:
+
+1. `--lang`（その実行のみ）
+2. `CSWITCH_LANG`
+3. `cswitch lang` で保存した言語
+4. `LC_ALL`、`LC_MESSAGES`、`LANG`
+5. macOS のシステム言語
 
 ## 履歴の共有: 共有できるもの・できないもの
 
@@ -183,6 +145,7 @@ export CSWITCH_LANG=ja
 ## 制限事項
 
 - **Linux では Claude Code のみ対応。** Desktop 関連のコマンドやオプションは、Desktop が使えないことを表示します。Linux にはキーチェーンがないため、保存したログイン情報は `~/.config/cswitch/master.key`（パーミッション 0600）の鍵で暗号化されます。これは Linux 上で Claude Code が自身の `~/.claude/.credentials.json` を保護するのと同じ水準です。
+- **macOS に SSH で接続して使う場合は、先にキーチェーンのロックを解除してください:** `security unlock-keychain ~/Library/Keychains/login.keychain-db`。ログインキーチェーンは画面からログインしたときにだけ自動で解除されます。`claude` 自体にも同じ制限があります。
 - **`CLAUDE_CONFIG_DIR` には対応していません。** cswitch は Claude Code の既定の場所を前提とします。
 - **非公開のローカル形式に依存しています。** Claude Code や Claude Desktop のアップデートで動かなくなる可能性があります。認識できない形式を見つけた場合、cswitch は書き込まずにエラーで停止します。
 - **実行中の `claude` セッションは再起動するまで元のアカウントのままです。** また、元のアカウントを `~/.claude.json` に書き戻すことがあります。cswitch はキーチェーンのトークンからこれを検出し、次の切り替え時に修正します。

@@ -3,9 +3,11 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,63 +30,55 @@ func checkpointDir() string { return filepath.Join(store.Home(), "tmp") }
 // codeState describes the live Claude Code login.
 type codeState struct {
 	loggedIn bool
-	account  *claudecode.Account // nil if ~/.claude.json has no usable oauthAccount
+	account  *claudecode.Account // who the token belongs to; nil only if unknown
 	owner    *store.Profile      // profile holding this login, or nil if unsaved
 }
 
 // identifyCode works out which profile the live Claude Code login belongs to.
 //
-// The keychain token is matched against saved profiles first, because a
-// claude process that was running during a switch can write its stale
-// oauthAccount back into ~/.claude.json; the keychain is authoritative. When
-// the two disagree, ~/.claude.json is repaired. If Claude Code has rotated the
-// token since it was saved, the match falls back to oauthAccount.
+// The account is the one the server reports for the token (see readLiveCode),
+// not ~/.claude.json, which Claude Desktop's embedded Claude Code rewrites with
+// Desktop's account. A saved profile owns the login if it holds the same
+// refresh token and is that account, or else if it is that account. When
+// ~/.claude.json names someone else, it is put right so Claude Code's own
+// display matches its login.
 func identifyCode() (*codeState, error) {
-	creds, err := claudecode.ReadCredentials()
+	lc, err := readLiveCode()
 	if errors.Is(err, claudecode.ErrNotLoggedIn) {
 		return &codeState{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	st := &codeState{loggedIn: true}
-	_, acct, acctErr := claudecode.ReadAccount()
-	if acctErr == nil {
-		st.account = acct
-	}
+	st := &codeState{loggedIn: true, account: lc.account}
 
 	ps, err := store.List()
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range ps {
-		if !p.HasCode {
+		if !p.HasCode || p.AccountUUID != lc.account.AccountUUID {
 			continue
 		}
 		raw, err := store.Secret(p.Name, "code")
 		if err != nil {
 			continue
 		}
-		saved, err := claudecode.ParseCredentials(raw)
-		if err != nil || saved.OAuth.RefreshToken != creds.OAuth.RefreshToken {
-			continue
+		if saved, err := claudecode.ParseCredentials(raw); err == nil && saved.OAuth.RefreshToken == lc.creds.OAuth.RefreshToken {
+			st.owner = p
+			break
 		}
-		st.owner = p
-		if (st.account == nil || st.account.AccountUUID != p.AccountUUID) && len(p.OAuthAccount) > 0 {
-			warn(i18n.T("warn.code_account_repaired", p.Name))
-			if err := claudecode.WriteAccount(p.OAuthAccount, store.BackupDir()); err != nil {
-				return nil, err
-			}
-			if _, st.account, err = claudecode.ReadAccount(); err != nil {
-				return nil, err
-			}
-		}
-		return st, nil
 	}
-
-	if st.account != nil {
-		if st.owner, err = store.FindByAccount(st.account.AccountUUID); err != nil {
+	if st.owner == nil {
+		if st.owner, err = store.FindByAccount(lc.account.AccountUUID); err != nil {
 			return nil, err
+		}
+	}
+	if lc.verified {
+		if _, fileAcct, err := claudecode.ReadAccount(); err != nil || fileAcct.AccountUUID != lc.account.AccountUUID {
+			if err := claudecode.WriteAccount(lc.oauthAccount, store.BackupDir()); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return st, nil
@@ -97,73 +91,121 @@ func (s *codeState) email() string {
 	return "?"
 }
 
-// codeOwner returns the profile owning the live Claude Code login. If Claude
-// Code is logged in with an account no profile holds, switching away would
-// lose that login, so it fails unless force is set.
-func codeOwner(force bool) (*store.Profile, error) {
+// autoName picks a name for an account no profile holds yet: the local part
+// of its email ("alex" for alex@example.com), or "desktop-<id>" when
+// only a Desktop login with no email is known. A number is appended if the
+// name is taken. Users can rename it later with `cswitch rename`.
+func autoName(email, uuid string) (string, error) {
+	base := ""
+	if i := strings.IndexByte(email, '@'); i > 0 {
+		base = sanitizeName(email[:i])
+	}
+	if base == "" {
+		id := strings.ReplaceAll(uuid, "-", "")
+		if len(id) > 8 {
+			id = id[:8]
+		}
+		base = "desktop-" + id
+	}
+	for i := 1; ; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		if store.ValidateNewName(name) != nil {
+			continue // reserved (a command name) or otherwise unusable
+		}
+		if _, err := store.Load(name); errors.Is(err, store.ErrNoProfile) {
+			return name, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+}
+
+// sanitizeName turns an email local part into a valid profile name.
+func sanitizeName(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		case r == '+':
+			b.WriteRune('-')
+		}
+	}
+	name := strings.TrimLeft(b.String(), "._-")
+	if len(name) > 48 {
+		name = name[:48]
+	}
+	if store.ValidateName(name) != nil {
+		return ""
+	}
+	return name
+}
+
+// codeOwner returns the profile holding the live Claude Code login. A login
+// no profile holds yet is saved under an automatic name first, so switching
+// away never loses it and never needs a separate `add`.
+func codeOwner() (*store.Profile, error) {
 	st, err := identifyCode()
 	if err != nil {
 		return nil, err
 	}
-	if st.loggedIn && st.owner == nil {
-		if !force {
-			return nil, i18n.E("err.code_unsaved", st.email())
-		}
-		warn(i18n.T("warn.code_unsaved_lost", st.email()))
+	if !st.loggedIn || st.owner != nil {
+		return st.owner, nil
 	}
-	return st.owner, nil
-}
-
-// desktopOwner is codeOwner for Claude Desktop.
-func desktopOwner(force bool) (*store.Profile, error) {
-	snap, err := desktop.Read()
-	if errors.Is(err, desktop.ErrNotLoggedIn) {
-		return nil, nil
+	if st.account == nil {
+		return nil, i18n.E("err.code_no_oauth_account")
 	}
+	name, err := autoName(st.account.EmailAddress, st.account.AccountUUID)
 	if err != nil {
 		return nil, err
 	}
-	var p *store.Profile
-	if snap.AccountUUID != "" {
-		if p, err = store.FindByAccount(snap.AccountUUID); err != nil {
-			return nil, err
-		}
+	p := &store.Profile{Name: name}
+	if err := captureCode(p); err != nil {
+		return nil, err
 	}
-	if p == nil {
-		id := snap.AccountUUID
-		if id == "" {
-			id = "?"
-		}
-		if !force {
-			return nil, i18n.E("err.desktop_unsaved", id)
-		}
-		warn(i18n.T("warn.desktop_unsaved_lost", id))
-	}
+	info(i18n.T("info.auto_saved_code", st.account.EmailAddress, name))
 	return p, nil
 }
 
-// captureCode saves the live Claude Code login into p.
+// checkDesktopSavable fails only when Desktop holds a login that cannot be
+// saved because its account is unknown; switching would then lose it.
+func checkDesktopSavable(force bool) error {
+	snap, err := desktop.Read()
+	if errors.Is(err, desktop.ErrNotLoggedIn) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if snap.AccountUUID == "" && !force {
+		return i18n.E("err.desktop_unknown_account_switch")
+	}
+	return nil
+}
+
+// captureCode saves the live Claude Code login into p, labeled with the
+// account the server says its token belongs to.
 func captureCode(p *store.Profile) error {
-	creds, err := claudecode.ReadCredentials()
+	lc, err := readLiveCode()
 	if err != nil {
 		return err
 	}
-	raw, acct, err := claudecode.ReadAccount()
-	if err != nil {
-		return err
-	}
+	acct := lc.account
 	if p.AccountUUID != "" && p.AccountUUID != acct.AccountUUID {
-		return i18n.E("err.profile_other_account", p.Name, orDash(p.Email), acct.EmailAddress)
+		return i18n.E("err.profile_other_account", p.Name, emailOrNote(p), acct.EmailAddress)
 	}
-	if err := store.SetSecret(p.Name, "code", creds.Raw); err != nil {
+	if err := store.SetSecret(p.Name, "code", lc.creds.Raw); err != nil {
 		return err
 	}
 	p.AccountUUID = acct.AccountUUID
 	p.Email = acct.EmailAddress
 	p.OrganizationName = acct.OrganizationName
 	p.OrganizationUUID = acct.OrganizationUUID
-	p.SubscriptionType = creds.OAuth.SubscriptionType
-	p.OAuthAccount = raw
+	p.SubscriptionType = lc.creds.OAuth.SubscriptionType
+	p.OAuthAccount = lc.oauthAccount
 	p.HasCode = true
 	return store.Save(p)
 }
@@ -196,10 +238,11 @@ func captureDesktop(p *store.Profile) error {
 	return store.Save(p)
 }
 
-// saveBackCode stores the live Claude Code login into the profile that owns
-// it, so a refresh token Claude Code rotated since the last save is not lost.
-func saveBackCode(force bool) (*store.Profile, error) {
-	p, err := codeOwner(force)
+// saveBackCode stores the live Claude Code login into the profile that holds
+// it (creating one if needed), so a refresh token Claude Code rotated since
+// the last save is not lost.
+func saveBackCode() (*store.Profile, error) {
+	p, err := codeOwner()
 	if err != nil || p == nil {
 		return nil, err
 	}
@@ -207,12 +250,41 @@ func saveBackCode(force bool) (*store.Profile, error) {
 }
 
 // saveBackDesktop is saveBackCode for Desktop. Desktop must not be running.
+// With force, a login whose account is unknown is skipped instead of failing.
 func saveBackDesktop(force bool) (*store.Profile, error) {
-	p, err := desktopOwner(force)
-	if err != nil || p == nil {
+	snap, err := desktop.Read()
+	if errors.Is(err, desktop.ErrNotLoggedIn) {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
-	return p, captureDesktop(p)
+	if snap.AccountUUID == "" {
+		if force {
+			warn(i18n.T("warn.desktop_unknown_lost"))
+			return nil, nil
+		}
+		return nil, i18n.E("err.desktop_unknown_account_switch")
+	}
+	p, err := store.FindByAccount(snap.AccountUUID)
+	if err != nil {
+		return nil, err
+	}
+	created := false
+	if p == nil {
+		name, err := autoName("", snap.AccountUUID)
+		if err != nil {
+			return nil, err
+		}
+		p, created = &store.Profile{Name: name}, true
+	}
+	if err := captureDesktop(p); err != nil {
+		return nil, err
+	}
+	if created {
+		info(i18n.T("info.auto_saved_desktop", p.Name))
+	}
+	return p, nil
 }
 
 // applyCode makes p the live Claude Code login. If updating ~/.claude.json
@@ -238,6 +310,7 @@ func applyCode(p *store.Profile) error {
 	if err := claudecode.WriteCredentials(creds); err != nil {
 		return err
 	}
+	resetLiveCache()
 	if err := claudecode.WriteAccount(p.OAuthAccount, store.BackupDir()); err != nil {
 		var rerr error
 		if prev != nil {

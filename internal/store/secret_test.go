@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,5 +136,113 @@ func TestSecretWithKeyFile(t *testing.T) {
 	keyMu.Unlock()
 	if _, err := Secret("a", "code"); err == nil {
 		t.Error("invalid key file accepted")
+	}
+}
+
+func TestRenameReencryptsSecrets(t *testing.T) {
+	h := setHome(t)
+	t.Setenv("CSWITCH_KEY_FILE", filepath.Join(h, "master.key"))
+	keyMu.Lock()
+	keyCache = nil
+	keyMu.Unlock()
+
+	Save(&Profile{Name: "desktop-abc", AccountUUID: "u", HasCode: true, HasDesktop: true})
+	SetSecret("desktop-abc", "code", "code-secret")
+	SetSecret("desktop-abc", "desktop", "desk-secret")
+	Save(&Profile{Name: "taken"})
+
+	if err := Rename("desktop-abc", "taken"); err == nil {
+		t.Error("renaming onto an existing profile should fail")
+	}
+	if err := Rename("desktop-abc", "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load("desktop-abc"); err == nil {
+		t.Error("old name still exists")
+	}
+	p, err := Load("alpha")
+	if err != nil || p.AccountUUID != "u" {
+		t.Fatalf("renamed = %+v, %v", p, err)
+	}
+	for kind, want := range map[string]string{"code": "code-secret", "desktop": "desk-secret"} {
+		if got, err := Secret("alpha", kind); err != nil || got != want {
+			t.Errorf("%s after rename = %q, %v", kind, got, err)
+		}
+	}
+	if found, _ := FindByAccount("u"); found == nil || found.Name != "alpha" {
+		t.Errorf("FindByAccount after rename = %+v", found)
+	}
+}
+
+// A rename that fails halfway must leave every secret readable under the old
+// name: secrets are bound to the name they were encrypted for.
+func TestRenameFailureKeepsSecretsReadable(t *testing.T) {
+	h := setHome(t)
+	t.Setenv("CSWITCH_KEY_FILE", filepath.Join(h, "master.key"))
+	keyMu.Lock()
+	keyCache = nil
+	keyMu.Unlock()
+
+	Save(&Profile{Name: "old", AccountUUID: "u", HasCode: true, HasDesktop: true})
+	SetSecret("old", "code", "code-secret")
+	SetSecret("old", "desktop", "desk-secret")
+
+	writes := 0
+	failSetSecret = func(name, kind string) error {
+		if name == "new" {
+			writes++
+			if writes == 2 { // the first secret is re-encrypted, the second fails
+				return errors.New("disk full")
+			}
+		}
+		return nil
+	}
+	defer func() { failSetSecret = nil }()
+
+	if err := Rename("old", "new"); err == nil {
+		t.Fatal("expected the injected failure")
+	}
+	if _, err := Load("new"); err == nil {
+		t.Error("half-renamed profile left under the new name")
+	}
+	for kind, want := range map[string]string{"code": "code-secret", "desktop": "desk-secret"} {
+		if got, err := Secret("old", kind); err != nil || got != want {
+			t.Errorf("%s after failed rename = %q, %v", kind, got, err)
+		}
+	}
+}
+
+func TestReservedNames(t *testing.T) {
+	Reserve("sync", "ls")
+	if err := ValidateNewName("sync"); err == nil {
+		t.Error("reserved name accepted")
+	}
+	if err := ValidateNewName("LS"); err == nil {
+		t.Error("reserved names must match case-insensitively")
+	}
+	if err := ValidateNewName("syncer"); err != nil {
+		t.Errorf("unreserved name rejected: %v", err)
+	}
+	if err := ValidateName("sync"); err != nil {
+		t.Error("existing profiles with reserved names must stay loadable")
+	}
+}
+
+func TestDeleteSecret(t *testing.T) {
+	h := setHome(t)
+	t.Setenv("CSWITCH_KEY_FILE", filepath.Join(h, "master.key"))
+	keyMu.Lock()
+	keyCache = nil
+	keyMu.Unlock()
+	Save(&Profile{Name: "a"})
+	SetSecret("a", "code", "x")
+	if err := DeleteSecret("a", "code"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Secret("a", "code"); err == nil {
+		t.Error("secret still readable")
+	}
+	if err := DeleteSecret("a", "code"); err != nil {
+		t.Errorf("deleting a missing secret: %v", err)
 	}
 }

@@ -83,7 +83,7 @@ All user-facing text lives in [`internal/i18n/messages.go`](internal/i18n/messag
 - Run `make fmt test` (and `make e2e` for switch-flow changes) before pushing.
 - Never weaken the safety rules without discussing it in an issue first. These are:
   - back up before writing
-  - refuse to overwrite an unsaved login without `--force`
+  - save the current logins before replacing them
   - roll back a failed Desktop switch
   - never log out
 - Describe how you tested, including app versions if the change depends on their file formats.

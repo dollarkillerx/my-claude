@@ -17,6 +17,29 @@ import (
 // ErrNotFound is returned when no matching item exists.
 var ErrNotFound = errors.New("keychain item not found")
 
+type lockedError struct{}
+
+func (lockedError) Error() string { return i18n.T("err.keychain_locked") }
+
+// ErrLocked is returned when the keychain is locked and cannot prompt, which
+// is what happens over SSH: the login keychain is only unlocked by a login at
+// the screen. security reports it as exit status 36.
+var ErrLocked error = lockedError{}
+
+// exitErr maps security's exit codes to sentinel errors.
+func exitErr(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		switch ee.ExitCode() {
+		case 44: // errSecItemNotFound
+			return ErrNotFound
+		case 36: // errSecInteractionNotAllowed
+			return ErrLocked
+		}
+	}
+	return nil
+}
+
 const securityBin = "/usr/bin/security"
 
 // runQuiet is run without security's output in the error. When a write
@@ -48,10 +71,8 @@ func run(stdin []byte, args ...string) ([]byte, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		var ee *exec.ExitError
-		// Exit status 44 is errSecItemNotFound.
-		if errors.As(err, &ee) && ee.ExitCode() == 44 {
-			return nil, ErrNotFound
+		if sentinel := exitErr(err); sentinel != nil {
+			return nil, sentinel
 		}
 		return nil, &securityError{cmd: args[0], err: err, stderr: strings.TrimSpace(stderr.String())}
 	}
@@ -72,9 +93,8 @@ func Get(service, account string) (string, error) {
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = io.Discard, &stderr
 	if err := cmd.Run(); err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 44 {
-			return "", ErrNotFound
+		if sentinel := exitErr(err); sentinel != nil {
+			return "", sentinel
 		}
 		return "", fmt.Errorf("security find-generic-password: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}

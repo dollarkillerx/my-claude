@@ -116,3 +116,14 @@ func TestRunningIn(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteAccountCreatesMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CSWITCH_CLAUDE_JSON", filepath.Join(dir, ".claude.json"))
+	if err := WriteAccount(json.RawMessage(`{"accountUuid":"u","emailAddress":"a@b"}`), filepath.Join(dir, "backups")); err != nil {
+		t.Fatal(err)
+	}
+	if _, a, err := ReadAccount(); err != nil || a.AccountUUID != "u" {
+		t.Errorf("account = %+v, %v", a, err)
+	}
+}

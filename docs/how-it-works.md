@@ -30,6 +30,17 @@ The credentials item is a JSON document:
 
 **Switching Claude Code** replaces the keychain item and the `oauthAccount` key. The file is rewritten atomically, and every other key in `~/.claude.json` is left as it was. If `~/.claude.json` is a symlink (e.g. managed by a dotfiles repo), the link's target is written and the link is kept. If updating the file fails, the keychain is put back as it was, including deleting the item if Claude Code was logged out before. The whole credentials JSON is stored and restored as-is, so fields cswitch doesn't know about survive.
 
+### Which account a token belongs to
+
+`~/.claude.json`'s `oauthAccount` can't be trusted to say whose login is in the keychain. Claude Desktop runs its own embedded Claude Code for the Code tab, which shares `~/.claude.json` and rewrites `oauthAccount` with **Desktop's** account, while the CLI's keychain item may hold a different account's token. Version 0.1 trusted the file and could save one account's token under another account's name.
+
+cswitch therefore asks the server who a token belongs to (`GET /api/oauth/profile`, the endpoint Claude Code itself uses):
+
+- **When a login is saved**, it's labeled with the account and organization the server reports, and the `oauthAccount` entry that cswitch restores on later switches is built from that.
+- **When the live login is identified**, the same lookup is used. If `~/.claude.json` names another account, it's corrected so `claude` shows the right account.
+- **When usage is checked**, each saved token's owner is checked too. A token found in the wrong profile (saved by 0.1) is moved to the profile of the account it belongs to, or to a new one, and removed from the wrong profile, with a message saying so.
+- **When offline**, cswitch falls back to `~/.claude.json` with a warning.
+
 ### Running sessions
 
 A running `claude` process keeps its tokens and its copy of `~/.claude.json` in memory. After a switch it continues as the old account until restarted, and its next config save may write the old `oauthAccount` back. To handle that, cswitch identifies the live account by the keychain refresh token first:
@@ -66,6 +77,12 @@ When cswitch *saves* a Desktop login (`add`, `login`), it also quits Desktop fir
 
 ## Profiles
 
+A profile is one account. cswitch creates profiles by itself:
+
+- **Before every switch or login**, the logins the apps currently hold are saved. A Claude Code account no profile holds yet becomes a new profile named after the local part of its email. A Desktop account becomes `desktop-<first 8 hex digits of its UUID>`, because Desktop doesn't expose the email.
+- **Naming is matched by account UUID.** When the same account later logs in to the other app, its login joins the same profile. Giving a name explicitly (`cswitch add bob`, `cswitch login bob`) for an account saved under another name renames that profile.
+- **Renaming** re-encrypts the profile's secrets, because they are bound to the profile name (below).
+
 ```
 keychain  service "cswitch", account "master-key"  → 32-byte AES key (hex); on Linux: ~/.config/cswitch/master.key
 ~/.config/cswitch/profiles/<name>/code.enc         → Claude Code credentials JSON, encrypted
@@ -100,14 +117,20 @@ Authorization: Bearer <access token>
 anthropic-beta: oauth-2025-04-20
 ```
 
-Every top-level object in the response that has a `utilization` field is shown as a window. That includes `five_hour`, `seven_day` and `seven_day_opus`, and any window added later shows up without a code change.
+The response's `limits` list is shown the way the Claude apps show it:
+
+- the current session (`session`)
+- the week (`weekly_all`)
+- per-model weekly allowances (`weekly_scoped`, labeled with the model's display name, e.g. "Week (Fable)")
+
+A window that hasn't started (no reset time, `is_active: false`) is shown as "not started". Older responses without `limits` fall back to the per-window fields (`five_hour`, `seven_day`, …). The internal, codenamed entries the endpoint also returns are listed only with `--all`.
 
 Expired tokens are refreshed at `https://console.anthropic.com/v1/oauth/token` with Claude Code's public OAuth client ID, and the new tokens are saved:
 
 - **Other profiles:** the token is refreshed and saved to the profile.
-- **The active account:** it is identified by the keychain token, as above, not by `~/.claude.json` alone. Its token is read from Claude Code's own keychain item and refreshed only when no `claude` process is running, because a running process would still hold the old, now-revoked refresh token in memory.
+- **The active account:** it is identified by the keychain token, as above, not by `~/.claude.json` alone. Its token is read from Claude Code's own credentials, and a refreshed token is written back there. That's exactly what happens when one of several concurrent `claude` sessions refreshes the shared login, and the other sessions pick the new token up the same way.
 
-"A running `claude`" means:
+When cswitch warns that "`claude` is running" after a switch, a running `claude` means:
 
 - a process whose executable is named `claude`, or
 - `node` running `@anthropic-ai/claude-code/cli.js` (an npm install).

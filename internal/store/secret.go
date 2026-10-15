@@ -172,10 +172,18 @@ func Secret(name, kind string) (string, error) {
 	return string(plain), nil
 }
 
+// failSetSecret lets tests inject a write failure.
+var failSetSecret func(name, kind string) error
+
 // SetSecret stores a secret; kind is "code" or "desktop".
 func SetSecret(name, kind, value string) error {
 	if err := ValidateName(name); err != nil {
 		return err
+	}
+	if failSetSecret != nil {
+		if err := failSetSecret(name, kind); err != nil {
+			return err
+		}
 	}
 	g, err := aead()
 	if err != nil {
@@ -197,4 +205,18 @@ func SetSecret(name, kind, value string) error {
 	}
 	// Drop a copy left in the keychain by an early version.
 	return keychain.Delete(keychainService(), name+"/"+kind)
+}
+
+// DeleteSecret removes a stored secret; a missing one is not an error.
+func DeleteSecret(name, kind string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+	if err := os.Remove(secretPath(name, kind)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if useKeychain() {
+		return keychain.Delete(keychainService(), name+"/"+kind)
+	}
+	return nil
 }

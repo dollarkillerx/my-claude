@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/dollarkillerx/my-claude/internal/fsutil"
@@ -31,6 +32,28 @@ type Profile struct {
 }
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+var reserved = map[string]bool{}
+
+// Reserve marks names a new profile must not take, such as command names:
+// "cswitch <name>" would run the command instead of switching.
+func Reserve(names ...string) {
+	for _, n := range names {
+		reserved[strings.ToLower(n)] = true
+	}
+}
+
+// ValidateNewName is ValidateName plus a check against reserved names. It is
+// for names being created; existing profiles keep working whatever their name.
+func ValidateNewName(name string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+	if reserved[strings.ToLower(name)] {
+		return i18n.E("err.reserved_name", name)
+	}
+	return nil
+}
 
 // ValidateName rejects names that are unsafe as directory or keychain account names.
 func ValidateName(name string) error {
@@ -179,4 +202,65 @@ func Remove(name string) error {
 		}
 	}
 	return os.RemoveAll(Dir(name))
+}
+
+// Rename renames a profile. Its secrets are bound to the profile name, so
+// they are re-encrypted under the new name.
+func Rename(oldName, newName string) error {
+	if err := ValidateNewName(newName); err != nil {
+		return err
+	}
+	p, err := Load(oldName)
+	if err != nil {
+		return err
+	}
+	if _, err := Load(newName); err == nil {
+		return i18n.E("err.profile_exists", newName)
+	} else if !errors.Is(err, ErrNoProfile) {
+		return err
+	}
+	secrets := map[string]string{}
+	for _, kind := range []string{"code", "desktop"} {
+		if (kind == "code" && !p.HasCode) || (kind == "desktop" && !p.HasDesktop) {
+			continue
+		}
+		v, err := Secret(oldName, kind)
+		if err != nil {
+			return err
+		}
+		secrets[kind] = v
+	}
+
+	listCache = nil
+	if err := os.Rename(Dir(oldName), Dir(newName)); err != nil {
+		return err
+	}
+	// On failure, move the folder back and re-encrypt every secret under the
+	// old name again: secrets are bound to the name, so one already rewritten
+	// for newName would otherwise be undecryptable under oldName.
+	undo := func(err error) error {
+		os.Rename(Dir(newName), Dir(oldName))
+		listCache = nil
+		for kind, v := range secrets {
+			if rerr := SetSecret(oldName, kind, v); rerr != nil {
+				return i18n.E("err.rollback_failed", err, rerr)
+			}
+		}
+		return err
+	}
+	for kind, v := range secrets {
+		if err := SetSecret(newName, kind, v); err != nil {
+			return undo(err)
+		}
+	}
+	p.Name = newName
+	if err := Save(p); err != nil {
+		return undo(err)
+	}
+	if useKeychain() {
+		for kind := range secrets {
+			keychain.Delete(keychainService(), oldName+"/"+kind)
+		}
+	}
+	return nil
 }

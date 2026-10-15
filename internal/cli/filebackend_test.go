@@ -26,6 +26,10 @@ func TestCodeSwitchWithFileBackend(t *testing.T) {
 	t.Setenv("CSWITCH_DESKTOP_APP", "cswitch-no-such-app")
 	t.Setenv("CSWITCH_CLAUDE_PROC", "cswitch-no-such-proc")
 	i18n.SetLang("en")
+	newFakeAPI(t, map[string][2]string{
+		"alice": {"aaaaaaaa-0000-0000-0000-000000000001", "alice@example.com"},
+		"bob":   {"bbbbbbbb-0000-0000-0000-000000000002", "bob@example.com"},
+	})
 
 	login := func(who, uuid string) {
 		t.Helper()
