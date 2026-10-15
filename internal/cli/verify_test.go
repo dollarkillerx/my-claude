@@ -199,3 +199,71 @@ func TestSaveCodeKeepsExistingNameForLogin(t *testing.T) {
 		t.Error("existing profile renamed to work")
 	}
 }
+
+// A saved login whose refresh token the server rejects is removed with a
+// clear message instead of failing with HTTP 400 on every run.
+func TestUsageDropsEndedSavedLogin(t *testing.T) {
+	credFile, run := fileEnv(t)
+	api := newFakeAPI(t, map[string][2]string{"alpha": {uuidAlpha, "alpha@example.com"}})
+	api.srv.Config.Handler = revokeRefresh(api.srv.Config.Handler)
+	os.Remove(credFile)
+
+	store.Save(&store.Profile{Name: "beta", AccountUUID: uuidBeta, Email: "beta@example.com", HasCode: true, HasDesktop: true})
+	dead := fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"dummy-gone","refreshToken":"r-gone","expiresAt":%d}}`, time.Now().Add(-time.Hour).UnixMilli())
+	store.SetSecret("beta", "code", dead)
+
+	out := captureStdout(t, func() {
+		if err := run("usage"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(out, "cswitch login") || strings.Contains(out, "HTTP 400") {
+		t.Errorf("output = %q", out)
+	}
+	p, _ := store.Load("beta")
+	if p.HasCode || !p.HasDesktop {
+		t.Errorf("beta = code %v desktop %v", p.HasCode, p.HasDesktop)
+	}
+}
+
+// Claude Code's blanked credentials count as logged out, so login goes ahead.
+func TestBlankLiveCredentialsAreLoggedOut(t *testing.T) {
+	credFile, _ := fileEnv(t)
+	newFakeAPI(t, nil)
+	os.WriteFile(credFile, []byte(`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"subscriptionType":"max"}}`), 0o600)
+	resetLiveCache()
+	st, err := identifyCode()
+	if err != nil || st.loggedIn {
+		t.Errorf("identifyCode = %+v, %v; want logged out", st, err)
+	}
+	if p, err := saveBackCode(); err != nil || p != nil {
+		t.Errorf("saveBackCode = %v, %v; want nothing to save", p, err)
+	}
+}
+
+// Without the server, a login matched by its exact token keeps its profile's
+// account even when ~/.claude.json names Desktop's account.
+func TestUnverifiedLoginMatchedByToken(t *testing.T) {
+	credFile, _ := fileEnv(t)
+	t.Setenv("CSWITCH_PROFILE_URL", "http://127.0.0.1:9/profile") // offline
+	t.Setenv("CSWITCH_TOKEN_URL", "http://127.0.0.1:9/token")
+	writeCreds(t, credFile, "alpha", time.Now().Add(time.Hour))
+	raw, _ := os.ReadFile(credFile)
+	store.Save(&store.Profile{Name: "alpha", AccountUUID: uuidAlpha, Email: "alpha@example.com", HasCode: true})
+	store.SetSecret("alpha", "code", string(raw))
+	writeClaudeJSON(t, uuidBeta, "beta@example.com") // Desktop's account
+
+	st, err := identifyCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.owner == nil || st.owner.Name != "alpha" || st.account.AccountUUID != uuidAlpha {
+		t.Errorf("owner = %+v account = %+v", st.owner, st.account)
+	}
+	if err := captureCode(st.owner); err != nil {
+		t.Fatalf("captureCode: %v", err)
+	}
+	if p, _ := store.Load("alpha"); p.AccountUUID != uuidAlpha || p.Email != "alpha@example.com" {
+		t.Errorf("profile relabeled from ~/.claude.json: %+v", p)
+	}
+}

@@ -57,7 +57,9 @@ func identifyCode() (*codeState, error) {
 		return nil, err
 	}
 	for _, p := range ps {
-		if !p.HasCode || p.AccountUUID != lc.account.AccountUUID {
+		// A verified account must match; an unverified one comes from
+		// ~/.claude.json and is overruled by an exact token match.
+		if !p.HasCode || (lc.verified && p.AccountUUID != lc.account.AccountUUID) {
 			continue
 		}
 		raw, err := store.Secret(p.Name, "code")
@@ -66,10 +68,17 @@ func identifyCode() (*codeState, error) {
 		}
 		if saved, err := claudecode.ParseCredentials(raw); err == nil && saved.OAuth.RefreshToken == lc.creds.OAuth.RefreshToken {
 			st.owner = p
+			if !lc.verified {
+				st.account = &claudecode.Account{AccountUUID: p.AccountUUID, EmailAddress: p.Email,
+					OrganizationUUID: p.OrganizationUUID, OrganizationName: p.OrganizationName}
+			}
 			break
 		}
 	}
 	if st.owner == nil {
+		if !lc.verified {
+			offlineMsg.Do(func() { warn(i18n.T("warn.unverified_account", lc.verifyErr)) })
+		}
 		if st.owner, err = store.FindByAccount(lc.account.AccountUUID); err != nil {
 			return nil, err
 		}
@@ -192,6 +201,17 @@ func captureCode(p *store.Profile) error {
 	lc, err := readLiveCode()
 	if err != nil {
 		return err
+	}
+	if !lc.verified && p.AccountUUID != "" {
+		// The server could not be asked, and ~/.claude.json may name another
+		// account (Desktop's). Callers only pass an existing profile they
+		// matched to this login, so keep its account as it is.
+		if err := store.SetSecret(p.Name, "code", lc.creds.Raw); err != nil {
+			return err
+		}
+		p.SubscriptionType = lc.creds.OAuth.SubscriptionType
+		p.HasCode = true
+		return store.Save(p)
 	}
 	acct := lc.account
 	if p.AccountUUID != "" && p.AccountUUID != acct.AccountUUID {

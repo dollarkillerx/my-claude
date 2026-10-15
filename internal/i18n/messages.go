@@ -469,14 +469,16 @@ claude 会话在重启前仍使用原来的账户。`,
 再起動するまで元のアカウントのままです。`,
 	},
 	"cmd.usage.long": {
-		EN: `Show the 5-hour and weekly usage limits of each profile, using the same endpoint
-as Claude Code's /usage. Profiles are queried in parallel, and expired tokens are
-refreshed and saved, just as Claude Code itself does.`,
-		ZH: `查看每个账户的 5 小时和每周额度，使用的是 Claude Code /usage 背后的同一个接口。
-所有账户并发查询，过期的 token 会像 Claude Code 自己那样刷新并保存。`,
-		JA: `各プロファイルの 5 時間と週ごとの使用量上限を表示します。Claude Code の /usage と
-同じエンドポイントを使います。プロファイルは並列に照会され、期限切れのトークンは
-Claude Code 自身と同じように更新・保存されます。`,
+		EN: `Show the session, weekly and per-model limits of each account, using the same
+endpoint as Claude Code's /usage. Accounts are queried in parallel. Expired tokens
+of saved accounts are refreshed; the active account's token is left to Claude
+Code while claude is running.`,
+		ZH: `查看每个账户的当前会话、本周和按模型计算的额度，使用的是 Claude Code /usage 背后的
+同一个接口。所有账户并发查询。已保存账户过期的 token 会自动刷新；claude 正在运行时，
+当前账户的 token 交给 Claude Code 自己续期。`,
+		JA: `各アカウントのセッション・週間・モデル別の上限を表示します。Claude Code の /usage と
+同じエンドポイントを使い、並列に照会します。保存済みアカウントの期限切れトークンは
+更新されます。claude の実行中は、使用中アカウントのトークンは Claude Code に任せます。`,
 	},
 	"cmd.list.short": {
 		EN: "List saved accounts",
@@ -640,5 +642,32 @@ Claude Code 自身と同じように更新・保存されます。`,
 		EN: "CSWITCH_LANG=%s is set in your environment and takes precedence over this setting",
 		ZH: "环境变量 CSWITCH_LANG=%s 优先于这个设置，需要先去掉它才会生效",
 		JA: "環境変数 CSWITCH_LANG=%s がこの設定より優先されます",
+	},
+
+	// ---- v0.2.1: ended logins ----
+	"err.refresh_revoked": {
+		EN: "the login has ended (the server no longer accepts its refresh token)",
+		ZH: "登录已失效（服务器不再接受它的 refresh token）",
+		JA: "ログインが無効になっています（サーバーがリフレッシュトークンを受け付けません）",
+	},
+	"err.code_login_expired": {
+		EN: "the saved Claude Code login of %q has ended and was removed; log in to this account again with: cswitch login",
+		ZH: "%q 保存的 Claude Code 登录已失效，已移除；请运行 cswitch login 用这个账户重新登录",
+		JA: "%q に保存された Claude Code のログインは無効になったため削除しました。cswitch login でこのアカウントに再ログインしてください",
+	},
+	"err.live_login_ended": {
+		EN: "Claude Code's current login has ended; log in again with: cswitch login",
+		ZH: "Claude Code 当前的登录已失效；请运行 cswitch login 重新登录",
+		JA: "Claude Code の現在のログインは無効になっています。cswitch login で再ログインしてください",
+	},
+	"err.live_token_expired_running": {
+		EN: "Claude Code's access token has expired; claude is running and renews it the next time you use it, so cswitch leaves it alone. Check again after using claude",
+		ZH: "Claude Code 的 access token 已过期；claude 正在运行，下次使用时会自己续期，cswitch 不去动它，以免把正在运行的会话踢下线。用一下 claude 之后再查",
+		JA: "Claude Code のアクセストークンの期限が切れています。claude が実行中で、次に使うときに自動で更新されるため、cswitch は触りません。claude を使った後に再確認してください",
+	},
+	"warn.current_login_not_saved": {
+		EN: "the current Claude Code login could not be saved (%v); continuing with the new login",
+		ZH: "无法保存当前的 Claude Code 登录（%v），继续进行新的登录",
+		JA: "現在の Claude Code のログインを保存できませんでした（%v）。新しいログインを続けます",
 	},
 }

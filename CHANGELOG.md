@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`login` said "not logged in with a Claude subscription" when Claude Code's login had ended.** Claude Code blanks its tokens when a login ends; that now counts as logged out, and `login` goes ahead even if the current login can't be saved.
+- **The active account's token is no longer refreshed while `claude` runs.** Refreshing rotated the refresh token out from under running sessions, which then failed their own refresh and blanked Claude Code's login. (0.2.0 refreshed it regardless.)
+- **A saved login the server no longer accepts** is removed with a message to log in again, instead of showing HTTP 400 on every run.
+- OAuth error responses are shown readably.
+
 ## [0.2.0] - 2026-10-15
 
 ### Changed
@@ -10,7 +19,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Current logins are saved automatically.** Switching and logging in no longer refuse to run because the current account isn't saved, and no separate `add` is needed. New accounts are named after their email; Desktop-only accounts are named `desktop-<id>`.
 - **Names are optional** for `add` and `login`. Giving a name to an account saved under another name renames it.
 - **`login` signs in Claude Code by default.** Use `--desktop` to also sign in Claude Desktop, or `--desktop-only`.
-- **`usage` refreshes the active account's expired token even while `claude` runs**, the same way concurrent claude sessions share the login. Internal codenamed usage entries are hidden unless `--all` is given.
+- Internal codenamed usage entries are hidden unless `--all` is given.
 - **`list` shows Code and Desktop columns.** Tables align correctly with Chinese and Japanese text.
 
 ### Fixed

@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,6 +29,14 @@ func TestWithTokensKeepsUnknownFields(t *testing.T) {
 	json.Unmarshal([]byte(n.Raw), &m)
 	if m["mcpOAuth"]["k"] != "v" || m["claudeAiOauth"]["rateLimitTier"] != "x" {
 		t.Errorf("unknown fields lost: %s", n.Raw)
+	}
+}
+
+func TestBlankTokensAreLoggedOut(t *testing.T) {
+	// What Claude Code leaves behind when a login ends.
+	_, err := ParseCredentials(`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0,"subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}`)
+	if !errors.Is(err, ErrNotLoggedIn) {
+		t.Errorf("err = %v, want ErrNotLoggedIn", err)
 	}
 }
 

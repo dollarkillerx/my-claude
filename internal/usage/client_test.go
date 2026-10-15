@@ -90,10 +90,20 @@ func TestRefreshErrors(t *testing.T) {
 		t.Setenv("CSWITCH_TOKEN_URL", srv.URL)
 		if _, err := Refresh(t.Context(), "r"); err == nil {
 			t.Errorf("%s: expected error", name)
-		} else if name == "invalid_grant" && !strings.Contains(err.Error(), "Refresh token revoked") {
-			t.Errorf("%s: %v", name, err)
+		} else if (name == "invalid_grant") != errors.Is(err, ErrRefreshRevoked) {
+			t.Errorf("%s: ErrRefreshRevoked mismatch: %v", name, err)
 		}
 		srv.Close()
+	}
+}
+
+func TestErrorMessageOAuthShape(t *testing.T) {
+	got := errorMessage([]byte(`{"error": "invalid_grant", "error_description": "Refresh token not found or invalid"}`))
+	if got != "invalid_grant: Refresh token not found or invalid" {
+		t.Errorf("got %q", got)
+	}
+	if got := errorMessage([]byte(`{"error":"invalid_request"}`)); got != "invalid_request" {
+		t.Errorf("code only: %q", got)
 	}
 }
 

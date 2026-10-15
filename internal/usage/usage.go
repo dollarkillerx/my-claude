@@ -97,6 +97,15 @@ func FetchProfile(ctx context.Context, accessToken string) (*Profile, error) {
 	}, nil
 }
 
+type refreshRevoked struct{}
+
+func (refreshRevoked) Error() string { return i18n.T("err.refresh_revoked") }
+
+// ErrRefreshRevoked means the server no longer accepts the refresh token:
+// the login has ended (it was rotated by another refresh, logged out, or
+// expired) and only a new login can replace it.
+var ErrRefreshRevoked error = refreshRevoked{}
+
 // Tokens is the result of a refresh.
 type Tokens struct {
 	AccessToken  string
@@ -119,6 +128,10 @@ func Refresh(ctx context.Context, refreshToken string) (*Tokens, error) {
 	req.Header.Set("Content-Type", "application/json")
 	data, err := do(req)
 	if err != nil {
+		var he *HTTPError
+		if errors.As(err, &he) && strings.Contains(he.Message, "invalid_grant") {
+			return nil, ErrRefreshRevoked
+		}
 		return nil, i18n.E("err.refresh", err)
 	}
 	var v struct {
@@ -288,18 +301,29 @@ func IsUnauthorized(err error) bool {
 
 // errorMessage extracts a short message without echoing anything token-like.
 func errorMessage(data []byte) string {
-	var v struct {
-		Error struct {
+	// Two shapes occur: the API's {"error":{"type":..,"message":..}} and the
+	// OAuth server's {"error":"invalid_grant","error_description":".."}.
+	var v map[string]json.RawMessage
+	if json.Unmarshal(data, &v) == nil {
+		var obj struct {
 			Message string `json:"message"`
 			Type    string `json:"type"`
-		} `json:"error"`
-		ErrorDescription string `json:"error_description"`
-	}
-	if json.Unmarshal(data, &v) == nil {
-		for _, s := range []string{v.Error.Message, v.ErrorDescription, v.Error.Type} {
+		}
+		var code, desc string
+		if json.Unmarshal(v["error"], &obj) != nil {
+			_ = json.Unmarshal(v["error"], &code)
+		}
+		_ = json.Unmarshal(v["error_description"], &desc)
+		for _, s := range []string{obj.Message, desc, obj.Type} {
 			if s != "" {
+				if code != "" {
+					return code + ": " + s
+				}
 				return s
 			}
+		}
+		if code != "" {
+			return code
 		}
 	}
 	s := strings.TrimSpace(string(data))

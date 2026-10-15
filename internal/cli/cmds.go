@@ -282,8 +282,10 @@ func loginCmd() *cobra.Command {
 			var codeProfile *store.Profile
 			if !desktopOnly {
 				// Keep the current login: it is saved (automatically named if new).
+				// If it cannot be saved (e.g. it is broken), logging in anew is
+				// exactly the fix, so carry on.
 				if _, err := saveBackCode(); err != nil {
-					return err
+					warn(i18n.T("warn.current_login_not_saved", err))
 				}
 				login := exec.Command("claude", "auth", "login")
 				login.Stdin, login.Stdout, login.Stderr = os.Stdin, os.Stdout, os.Stderr

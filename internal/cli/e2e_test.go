@@ -316,16 +316,24 @@ func TestUsageRefreshesLiveToken(t *testing.T) {
 	expired := strings.Replace(creds("expired", time.Now().Add(-time.Hour)), "dummy-r-expired", "dummy-r-bob", 1)
 	keychain.Set(claudecode.KeychainService(), os.Getenv("USER"), expired)
 
-	// A running claude no longer blocks the refresh: concurrent claude
-	// sessions share and refresh the same keychain login the same way.
+	// While claude runs, its token is left alone: a refresh would rotate the
+	// refresh token out from under the running session.
 	proc := exec.Command("sleep", "60")
 	if err := proc.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer proc.Process.Kill()
 	t.Setenv("CSWITCH_CLAUDE_PROC", "sleep")
-
 	p, _ := store.Load("b")
+	if claudecode.Running() {
+		if _, err := profileUsage(t.Context(), p, true); err == nil || refreshes != 0 {
+			t.Fatalf("live token refreshed while claude runs (err=%v, refreshes=%d)", err, refreshes)
+		}
+	}
+	proc.Process.Kill()
+	proc.Wait()
+	t.Setenv("CSWITCH_CLAUDE_PROC", "cswitch-no-such-proc") // other sleep processes may exist
+
+	// With no claude running, it is refreshed and written back.
 	r, err := profileUsage(t.Context(), p, true)
 	if err != nil || refreshes != 1 {
 		t.Fatalf("usage: %v, refreshes=%d", err, refreshes)

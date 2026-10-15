@@ -128,7 +128,8 @@ A window that hasn't started (no reset time, `is_active: false`) is shown as "no
 Expired tokens are refreshed at `https://console.anthropic.com/v1/oauth/token` with Claude Code's public OAuth client ID, and the new tokens are saved:
 
 - **Other profiles:** the token is refreshed and saved to the profile.
-- **The active account:** it is identified by the keychain token, as above, not by `~/.claude.json` alone. Its token is read from Claude Code's own credentials, and a refreshed token is written back there. That's exactly what happens when one of several concurrent `claude` sessions refreshes the shared login, and the other sessions pick the new token up the same way.
+- **The active account:** it is identified by the keychain token, as above. Its token is read from Claude Code's own credentials and **refreshed only when no `claude` process is running**. A refresh replaces the refresh token, and a running session still holding the old one fails its next refresh and then blanks Claude Code's login. A running `claude` renews the token by itself anyway.
+- **A login that has ended** (the server answers `invalid_grant`) is removed from its profile with a message to log in again. Claude Code itself blanks `accessToken` and `refreshToken` when its login ends; cswitch treats that as logged out.
 
 When cswitch warns that "`claude` is running" after a switch, a running `claude` means:
 

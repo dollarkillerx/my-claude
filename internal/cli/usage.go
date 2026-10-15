@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -152,10 +153,12 @@ func knownWindow(name string) bool {
 // profileUsage fetches usage for p, refreshing its token when needed.
 //
 // The active account's token is read from Claude Code's own credentials
-// (Claude Code may have rotated it since it was saved), and a refreshed token
-// is written back there. That is exactly what one of several concurrent
-// claude sessions does when it refreshes the shared login, and the other
-// sessions pick the new token up from the keychain the same way.
+// (Claude Code may have rotated it since it was saved). It is only refreshed
+// when no claude process is running: a refresh replaces the refresh token,
+// and a running session still holding the old one fails its next refresh and
+// then blanks Claude Code's login. A running claude keeps the token fresh by
+// itself anyway. A saved login whose refresh token the server rejects has
+// ended; it is removed so the account can simply be logged in again.
 func profileUsage(ctx context.Context, p *store.Profile, live bool) (*usage.Report, error) {
 	if !p.HasCode {
 		return nil, i18n.E("err.usage_needs_code")
@@ -175,7 +178,16 @@ func profileUsage(ctx context.Context, p *store.Profile, live bool) (*usage.Repo
 	}
 
 	refresh := func() error {
+		if live && claudecode.Running() {
+			return i18n.E("err.live_token_expired_running")
+		}
 		t, err := usage.Refresh(ctx, creds.OAuth.RefreshToken)
+		if errors.Is(err, usage.ErrRefreshRevoked) {
+			if live {
+				return i18n.E("err.live_login_ended")
+			}
+			return dropDeadCode(p)
+		}
 		if err != nil {
 			return err
 		}
@@ -221,6 +233,22 @@ func profileUsage(ctx context.Context, p *store.Profile, live bool) (*usage.Repo
 
 // profileFixMu serializes profile repairs made from parallel usage queries.
 var profileFixMu sync.Mutex
+
+// dropDeadCode removes a saved Claude Code login the server no longer
+// accepts and returns the message to show for p.
+func dropDeadCode(p *store.Profile) error {
+	profileFixMu.Lock()
+	defer profileFixMu.Unlock()
+	if err := store.DeleteSecret(p.Name, "code"); err != nil {
+		return err
+	}
+	p.HasCode = false
+	p.SubscriptionType = ""
+	if err := store.Save(p); err != nil {
+		return err
+	}
+	return i18n.E("err.code_login_expired", p.Name)
+}
 
 func windowLabel(name string) string {
 	switch name {

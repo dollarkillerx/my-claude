@@ -150,8 +150,14 @@ func ParseCredentials(raw string) (*Credentials, error) {
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
 		return nil, i18n.E("err.code_creds_parse", err)
 	}
-	if v.ClaudeAiOauth == nil || v.ClaudeAiOauth.RefreshToken == "" {
+	if v.ClaudeAiOauth == nil {
 		return nil, i18n.E("err.code_creds_no_oauth")
+	}
+	// Claude Code keeps the claudeAiOauth entry but blanks its tokens when a
+	// login ends (logout, or a refresh the server rejected): that is logged
+	// out, not an API-key login.
+	if v.ClaudeAiOauth.RefreshToken == "" {
+		return nil, ErrNotLoggedIn
 	}
 	return &Credentials{Raw: raw, OAuth: *v.ClaudeAiOauth}, nil
 }

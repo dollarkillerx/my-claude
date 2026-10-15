@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type liveCode struct {
 	account      *claudecode.Account
 	oauthAccount json.RawMessage // what to store and later restore as oauthAccount
 	verified     bool            // account confirmed by the server
+	verifyErr    error           // why verification failed, if it did
 }
 
 var (
@@ -52,10 +54,16 @@ func readLiveCode() (*liveCode, error) {
 	lc := &liveCode{creds: creds}
 	ctx, cancel := context.WithTimeout(context.Background(), verifyTimeout)
 	defer cancel()
-	prof, err := profileOf(ctx, creds, func(c *claudecode.Credentials) error {
+	// The live token is only refreshed when no claude process is running (see
+	// profileUsage); otherwise an expired token is matched against saved
+	// profiles instead of being verified.
+	prof, err := profileOf(ctx, creds, !claudecode.Running(), func(c *claudecode.Credentials) error {
 		lc.creds = c
 		return claudecode.WriteCredentials(c)
 	})
+	if errors.Is(err, usage.ErrRefreshRevoked) {
+		return nil, claudecode.ErrNotLoggedIn // the login has ended
+	}
 	switch {
 	case err == nil:
 		lc.verified = true
@@ -73,8 +81,10 @@ func readLiveCode() (*liveCode, error) {
 			lc.oauthAccount = oauthAccountFrom(prof)
 		}
 	case jsonErr == nil:
-		offlineMsg.Do(func() { warn(i18n.T("warn.unverified_account", err)) })
+		// Unverified: identifyCode trusts a saved profile holding this exact
+		// refresh token over the file, which may name Desktop's account.
 		lc.account, lc.oauthAccount = jsonAcct, rawJSON
+		lc.verifyErr = err
 	default:
 		return nil, err
 	}
@@ -84,7 +94,7 @@ func readLiveCode() (*liveCode, error) {
 
 // profileOf asks the server who creds belong to. An expired access token is
 // refreshed first (and once more on 401); save persists refreshed credentials.
-func profileOf(ctx context.Context, creds *claudecode.Credentials, save func(*claudecode.Credentials) error) (*usage.Profile, error) {
+func profileOf(ctx context.Context, creds *claudecode.Credentials, mayRefresh bool, save func(*claudecode.Credentials) error) (*usage.Profile, error) {
 	refresh := func() error {
 		t, err := usage.Refresh(ctx, creds.OAuth.RefreshToken)
 		if err != nil {
@@ -96,14 +106,14 @@ func profileOf(ctx context.Context, creds *claudecode.Credentials, save func(*cl
 		return save(creds)
 	}
 	refreshed := false
-	if creds.Expired(2 * time.Minute) {
+	if creds.Expired(2*time.Minute) && mayRefresh {
 		if err := refresh(); err != nil {
 			return nil, err
 		}
 		refreshed = true
 	}
 	prof, err := usage.FetchProfile(ctx, creds.OAuth.AccessToken)
-	if usage.IsUnauthorized(err) && !refreshed {
+	if usage.IsUnauthorized(err) && !refreshed && mayRefresh {
 		if rerr := refresh(); rerr != nil {
 			return nil, rerr
 		}

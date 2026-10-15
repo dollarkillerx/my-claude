@@ -74,3 +74,15 @@ func http_slow(h http.Handler, d time.Duration) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 }
+
+// revokeRefresh makes the token endpoint reject every refresh token.
+func revokeRefresh(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error": "invalid_grant", "error_description": "Refresh token not found or invalid"}`)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
