@@ -41,6 +41,14 @@ cswitch therefore asks the server who a token belongs to (`GET /api/oauth/profil
 - **When usage is checked**, each saved token's owner is checked too. A token found in the wrong profile (saved by 0.1) is moved to the profile of the account it belongs to, or to a new one, and removed from the wrong profile, with a message saying so.
 - **When offline**, cswitch falls back to `~/.claude.json` with a warning.
 
+### Claude Code's locks
+
+Claude Code guards its token refresh with lock directories (the npm `proper-lockfile` protocol): `~/.claude/.oauth_refresh.lock` plus the legacy `~/.claude.lock`, both stale after 60 s, and `~/.claude.json.lock` for config writes, stale after 10 s. Holders touch the lock every 5 s.
+
+cswitch takes the same locks while it swaps credentials or writes `~/.claude.json`, so a swap never interleaves with a running claude's refresh. Under the lock, Claude Code's re-read finds the new, unexpired login and skips its own refresh. A live lock is waited for (up to 9 s); one older than its stale time is broken. The protocol is as documented by claude-swap, which verified it against the Claude Code 2.1.2xx bundle.
+
+Because Claude Code caches its keychain read for about 30 s, running sessions pick up a switched login on their own within that time.
+
 ### Running sessions
 
 A running `claude` process keeps its tokens and its copy of `~/.claude.json` in memory. After a switch it continues as the old account until restarted, and its next config save may write the old `oauthAccount` back. To handle that, cswitch identifies the live account by the keychain refresh token first:
@@ -125,7 +133,7 @@ The response's `limits` list is shown the way the Claude apps show it:
 
 A window that hasn't started (no reset time, `is_active: false`) is shown as "not started". Older responses without `limits` fall back to the per-window fields (`five_hour`, `seven_day`, …). The internal, codenamed entries the endpoint also returns are listed only with `--all`.
 
-Expired tokens are refreshed at `https://console.anthropic.com/v1/oauth/token` with Claude Code's public OAuth client ID, and the new tokens are saved:
+Expired tokens are refreshed at `https://platform.claude.com/v1/oauth/token` with Claude Code's public OAuth client ID, and the new tokens are saved:
 
 - **Other profiles:** the token is refreshed and saved to the profile.
 - **The active account:** it is identified by the keychain token, as above. Its token is read from Claude Code's own credentials and **refreshed only when no `claude` process is running**. A refresh replaces the refresh token, and a running session still holding the old one fails its next refresh and then blanks Claude Code's login. A running `claude` renews the token by itself anyway.
@@ -137,6 +145,56 @@ When cswitch warns that "`claude` is running" after a switch, a running `claude`
 - `node` running `@anthropic-ai/claude-code/cli.js` (an npm install).
 
 The `claude` that Claude Desktop bundles for its Code tab (`…/claude.app/Contents/MacOS/claude`) is ignored, because it gets its login from Desktop, not from Claude Code's keychain item.
+
+## Limit resets
+
+Claude Code reads an account's limit-reset status from the usage endpoint with `?cedar_ember=1` (cswitch always adds it, together with `skip_spend=1`). The `cedar_ember` block lists grants:
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `label` | identifier and display name (e.g. "Fable reset") |
+| `resets_total`, `resets_left` | how many the grant has, and how many are left |
+| `starts_at`, `ends_at` | validity window |
+| `usable_now`, `use_requires_limit` | whether it can be used right now; some only at a limit |
+| `paused`, `unavailable_reason` | why it can't be used |
+| `type`, `gives_back_weekly` | `session` / `weekly` / `full`, and whether it refunds weekly usage |
+
+Alongside these, `next_grant_id` names the grant Claude Code would use next, and `cooldown_until` blocks claims until then. A claim is `POST https://api.anthropic.com/api/organizations/{org}/reset_rate_limits` with `{"program": "cedar_ember", "grant_id": …, "request_id": …}` and the account's OAuth token. `request_id` is random, so a retried request isn't counted twice. The answer's `result` is one of `reset`, `already_used`, `not_limited`, `cooldown`, `ineligible` or `unavailable`. cswitch only claims when you run `cswitch reset` and confirm.
+
+## Auto-switch
+
+Each check (every minute by default) reads usage through the cache below. The active account is "over" when its session usage reaches `--threshold`, or its weekly usage (and any `--model` weekly limits) reaches `--weekly-threshold`. Then Claude Code is switched to the account with the lowest such ratio that is under both lines. These are skipped:
+
+- accounts without a Claude Code login;
+- accounts with a running `cswitch run` session;
+- accounts whose usage is unknown, or whose last reading is more than 15 minutes old (left over from a rate limit).
+
+The active account's own reading has to be at most 15 minutes old too, or the check is skipped. Switches are at least `--cooldown` (5 min) apart, and `auto-state.json` remembers the last one.
+
+Usage is read without a lock. Then the check takes cswitch's own lock (`~/.config/cswitch/.lock`), which manual commands share, makes sure the login hasn't changed meanwhile, and switches. So a check never blocks a command for longer than the switch itself, and the two never switch at the same time. The service's log, `auto.log`, is moved to `auto.log.1` and started over when it passes 2 MB.
+
+## Usage cache
+
+`usage-cache.json` keeps each account's last usage response:
+
+- **Reuse:** a reading is reused for 1 minute for the active account or one at ≥ 80% of any limit, and for 5 minutes for the others.
+- **Rate limits:** a 429 sets a backoff of the server's `Retry-After`, or 1, 2, 4 … up to 30 minutes. During the backoff nothing is fetched for that account, and the last reading is shown with its age.
+
+The dashboard, the picker, `usage`, `resets` and `auto` all go through it; `usage --refresh` and `reset` skip the freshness check, but never the backoff.
+
+Several cswitch processes share the file (the auto-switcher next to commands in a terminal). Each one reloads it when another has written it, and writes back only the entries it changed, merged into the file under `usage-cache.json.lock`. So one process never undoes another's reading or backoff.
+
+## Session mode
+
+`cswitch run <name>` starts claude with `CLAUDE_CONFIG_DIR=~/.config/cswitch/sessions/<name>`. In that directory:
+
+- **Shared with `~/.claude` (symlinks):** `settings.json`, `CLAUDE.md`, `keybindings.json`, `skills`, `commands`, `agents`, `plugins`, `output-styles`, `hooks`, `projects` (conversation history), `history.jsonl`, `todos`, `plans`. An entry already present in the session directory is left alone.
+- **`.claude.json`:** copied from `~/.claude.json` on first use. On every launch its `mcpServers` are refreshed from it, and `oauthAccount` is set to the account.
+- **Credentials:** they're in the keychain item for this directory (see above), or `.credentials.json` on Linux. When no other session of the account runs, the session starts with the newer of the profile's login and the one already in the directory, judged by the access token's expiry, which every login and refresh moves forward. The newer one is saved into the profile too. When the last session exits, a token it refreshed is saved back into the profile. If the terminal was closed before that could happen, the token is picked up the next time cswitch uses the account (`run`, `usage`, `rename`), so the profile's outdated copy never replaces it.
+
+Running sessions are tracked as pid files in `.cswitch-pids/`, written before cswitch's lock is released. While one runs, cswitch won't put the same login in the global home (`use`, `auto`), won't refresh that account's token, and reads usage and claims resets with the session's token. `remove` and `rename` delete the session directory and its keychain item; they refuse while a session runs.
+
+Arguments after the account name go to claude as they are, flags included (`cswitch run work --resume`). Without a name, a `--` comes first (`cswitch run -- --resume`).
 
 ## Session sync
 

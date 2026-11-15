@@ -56,22 +56,22 @@ var messages = map[string]map[Lang]string{
 	},
 	"cmd.current.short": {
 		EN: "Show which profile Claude Code and Claude Desktop are using",
-		ZH: "显示 Claude Code 和 Claude Desktop 当前使用的 profile",
+		ZH: "显示 Claude Code 和 Claude Desktop 当前使用的账户",
 		JA: "Claude Code と Claude Desktop が使用中のプロファイルを表示",
 	},
 	"cmd.use.short": {
 		EN: "Switch Claude Code and Claude Desktop to a profile",
-		ZH: "把 Claude Code 和 Claude Desktop 切换到指定 profile",
+		ZH: "把 Claude Code 和 Claude Desktop 切换到指定账户",
 		JA: "Claude Code と Claude Desktop をプロファイルに切り替え",
 	},
 	"cmd.usage.short": {
 		EN: "Show plan usage for all (or the given) profiles",
-		ZH: "查看所有（或指定）profile 的额度使用情况",
+		ZH: "查看所有（或指定）账户的额度",
 		JA: "全（または指定した）プロファイルの使用量を表示",
 	},
 	"cmd.remove.short": {
 		EN: "Delete a saved profile (does not log anything out)",
-		ZH: "删除已保存的 profile（不会登出任何账户）",
+		ZH: "删除已保存的账户（不会登出）",
 		JA: "保存済みプロファイルを削除（ログアウトはしません）",
 	},
 	"cmd.sync.short": {
@@ -120,7 +120,7 @@ claude.ai の会話はアカウントごとに Anthropic のサーバーに保�
 	// ---- info ----
 	"info.no_profiles": {
 		EN: "No profiles yet. Run `cswitch add <name>` to save the current account.",
-		ZH: "还没有 profile。运行 `cswitch add <名称>` 保存当前账户。",
+		ZH: "还没有账户。运行 `cswitch add <名称>` 保存当前账户。",
 		JA: "プロファイルはまだありません。`cswitch add <名前>` で現在のアカウントを保存してください。",
 	},
 	"info.saved_code": {
@@ -154,19 +154,19 @@ claude.ai の会話はアカウントごとに Anthropic のサーバーに保�
 	"info.in_sync": {EN: "Sessions are in sync", ZH: "会话已同步", JA: "セッションは同期済みです"},
 	"info.skip_code": {
 		EN: "Profile %s has no Claude Code login; leaving Claude Code unchanged",
-		ZH: "profile %s 没有保存 Claude Code 登录，Claude Code 保持不变",
+		ZH: "账户 %s 没有保存 Claude Code 登录，Claude Code 保持不变",
 		JA: "プロファイル %s には Claude Code のログインがないため、Claude Code は変更しません",
 	},
 	"info.skip_desktop": {
 		EN: "Profile %s has no Claude Desktop login; leaving Claude Desktop unchanged",
-		ZH: "profile %s 没有保存 Claude Desktop 登录，Claude Desktop 保持不变",
+		ZH: "账户 %s 没有保存 Claude Desktop 登录，Claude Desktop 保持不变",
 		JA: "プロファイル %s には Claude Desktop のログインがないため、Claude Desktop は変更しません",
 	},
 	"info.already_code":     {EN: "Claude Code is already using %s", ZH: "Claude Code 已经在使用 %s", JA: "Claude Code はすでに %s を使用しています"},
 	"info.already_desktop":  {EN: "Claude Desktop is already using %s", ZH: "Claude Desktop 已经在使用 %s", JA: "Claude Desktop はすでに %s を使用しています"},
 	"info.switched_code":    {EN: "Claude Code → %s (%s)", ZH: "Claude Code → %s（%s）", JA: "Claude Code → %s（%s）"},
 	"info.switched_desktop": {EN: "Claude Desktop → %s", ZH: "Claude Desktop → %s", JA: "Claude Desktop → %s"},
-	"info.removed":          {EN: "Removed profile %s", ZH: "已删除 profile %s", JA: "プロファイル %s を削除しました"},
+	"info.removed":          {EN: "Removed profile %s", ZH: "已删除账户 %s", JA: "プロファイル %s を削除しました"},
 
 	// ---- prompts ----
 	"prompt.desktop_login": {
@@ -181,15 +181,15 @@ claude.ai の会話はアカウントごとに Anthropic のサーバーに保�
 	},
 	"prompt.remove": {
 		EN: "Delete profile %s (%s)? [y/N] ",
-		ZH: "删除 profile %s（%s）？[y/N] ",
+		ZH: "删除账户 %s（%s）？[y/N] ",
 		JA: "プロファイル %s（%s）を削除しますか？ [y/N] ",
 	},
 
 	// ---- warnings ----
 	"warn.claude_running": {
-		EN: "claude is running. Restart those sessions: until then they keep the old account and may write it back to ~/.claude.json (cswitch repairs that on the next switch).",
-		ZH: "有 claude 进程正在运行。请重启这些会话：在重启前它们仍使用原来的账户，并可能把旧账户写回 ~/.claude.json（下次切换时 cswitch 会自动修正）。",
-		JA: "claude が実行中です。それらのセッションを再起動してください。再起動までは元のアカウントのままで、~/.claude.json に書き戻すことがあります（次の切り替え時に cswitch が修正します）。",
+		EN: "running claude sessions pick up the new account within about 30 seconds; restart them to switch right away",
+		ZH: "正在运行的 claude 会话会在约 30 秒内用上新账户；想立即生效可以重启它们",
+		JA: "実行中の claude セッションは約 30 秒以内に新しいアカウントに切り替わります。すぐに反映するには再起動してください",
 	},
 	"warn.sync_failed": {EN: "session sync failed: %v", ZH: "会话同步失败：%v", JA: "セッションの同期に失敗しました: %v"},
 
@@ -202,43 +202,43 @@ claude.ai の会話はアカウントごとに Anthropic のサーバーに保�
 	"err.aborted": {EN: "aborted", ZH: "已取消", JA: "中止しました"},
 	"err.invalid_name": {
 		EN: "invalid profile name %q (use letters, digits, '.', '_' or '-')",
-		ZH: "无效的 profile 名称 %q（只能使用字母、数字、'.'、'_' 或 '-'）",
+		ZH: "无效的账户 名称 %q（只能使用字母、数字、'.'、'_' 或 '-'）",
 		JA: "無効なプロファイル名 %q（英数字、'.'、'_'、'-' のみ使用できます）",
 	},
 	"err.no_profile": {
 		EN: "profile %s does not exist (%w)",
-		ZH: "profile %s 不存在（%w）",
+		ZH: "账户 %s 不存在（%w）",
 		JA: "プロファイル %s は存在しません（%w）",
 	},
 	"err.profile_corrupt": {
 		EN: "profile %s is unreadable: %w",
-		ZH: "profile %s 无法读取：%w",
+		ZH: "账户 %s 无法读取：%w",
 		JA: "プロファイル %s を読み取れません: %w",
 	},
 	"err.no_secret_code": {
 		EN: "profile %s has no saved Claude Code login",
-		ZH: "profile %s 没有保存 Claude Code 登录",
+		ZH: "账户 %s 没有保存 Claude Code 登录",
 		JA: "プロファイル %s には Claude Code のログインが保存されていません",
 	},
 	"err.no_secret_desktop": {
 		EN: "profile %s has no saved Claude Desktop login",
-		ZH: "profile %s 没有保存 Claude Desktop 登录",
+		ZH: "账户 %s 没有保存 Claude Desktop 登录",
 		JA: "プロファイル %s には Claude Desktop のログインが保存されていません",
 	},
 	"err.no_oauth_account": {
 		EN: "profile %s has no saved account information; run `cswitch add` again while logged in to it",
-		ZH: "profile %s 没有保存账户信息，请在登录该账户时重新运行 `cswitch add`",
+		ZH: "账户 %s 没有保存账户信息，请在登录该账户时重新运行 `cswitch add`",
 		JA: "プロファイル %s にはアカウント情報が保存されていません。そのアカウントでログイン中に `cswitch add` を再実行してください",
 	},
 	"err.profile_other_account": {
 		EN: "profile %s belongs to %s, but Claude Code is logged in as %s",
-		ZH: "profile %s 属于 %s，但 Claude Code 当前登录的是 %s",
+		ZH: "账户 %s 属于 %s，但 Claude Code 当前登录的是 %s",
 		JA: "プロファイル %s は %s のものですが、Claude Code は %s でログインしています",
 	},
 	"err.backup": {EN: "backup %s: %w", ZH: "备份 %s 失败：%w", JA: "%s のバックアップに失敗しました: %w"},
 	"err.secret_corrupt": {
 		EN: "the saved %[2]s login of profile %[1]s cannot be decrypted; save it again with `cswitch add`",
-		ZH: "profile %[1]s 保存的 %[2]s 登录无法解密，请用 `cswitch add` 重新保存",
+		ZH: "账户 %[1]s 保存的 %[2]s 登录无法解密，请用 `cswitch add` 重新保存",
 		JA: "プロファイル %[1]s に保存された %[2]s のログインを復号できません。`cswitch add` で保存し直してください",
 	},
 	"err.keychain_locked": {
@@ -320,12 +320,12 @@ claude.ai の会話はアカウントごとに Anthropic のサーバーに保�
 	},
 	"err.desktop_other_account": {
 		EN: "Claude Desktop is logged in as a different account (%s) than profile %s",
-		ZH: "Claude Desktop 当前登录的账户（%s）与 profile %s 不是同一个",
+		ZH: "Claude Desktop 当前登录的账户（%s）与账户 %s 不是同一个",
 		JA: "Claude Desktop はプロファイル %[2]s とは別のアカウント（%[1]s）でログインしています",
 	},
 	"err.bad_desktop_snapshot": {
 		EN: "profile %s has a damaged Claude Desktop login: %w",
-		ZH: "profile %s 保存的 Claude Desktop 登录已损坏：%w",
+		ZH: "账户 %s 保存的 Claude Desktop 登录已损坏：%w",
 		JA: "プロファイル %s の Claude Desktop ログインが破損しています: %w",
 	},
 	"err.desktop_quit": {
@@ -670,4 +670,191 @@ Code while claude is running.`,
 		ZH: "无法保存当前的 Claude Code 登录（%v），继续进行新的登录",
 		JA: "現在の Claude Code のログインを保存できませんでした（%v）。新しいログインを続けます",
 	},
+
+	// ---- v0.3: resets, auto-switch, session mode, rate control ----
+	"cmd.resets.short": {EN: "Show each account's limit resets", ZH: "查看每个账户的「上限重置」", JA: "各アカウントの上限リセットを表示"},
+	"cmd.reset.short":  {EN: "Use one limit reset of an account", ZH: "使用账户的一次「上限重置」", JA: "アカウントの上限リセットを 1 回使う"},
+	"cmd.reset.long": {
+		EN: `Use one of an account's limit resets, the "Reset for free" of the apps' usage
+page. Without a grant ID the one Claude Code would use next is chosen. The
+details are shown and confirmed first: a used reset cannot be given back.`,
+		ZH: `使用账户的一次「上限重置」，也就是 App 用量页面上的「免费重置」。不指定重置 ID 时，
+使用 Claude Code 会优先使用的那一个。执行前会显示详情并确认：用掉的重置无法退回。`,
+		JA: `アカウントの上限リセットを 1 回使います（アプリの使用量ページの「無料でリセット」）。
+ID を省略すると、Claude Code が次に使うものを選びます。使ったリセットは戻せないため、
+実行前に内容を表示して確認します。`,
+	},
+	"resets.header":            {EN: "RESET\tLEFT\tEXPIRES\tSTATUS\tID", ZH: "重置\t剩余\t到期\t状态\tID", JA: "リセット\t残り\t有効期限\t状態\tID"},
+	"resets.none_reported":     {EN: "the server reported no reset status", ZH: "服务器没有返回重置信息", JA: "サーバーからリセット情報が返されませんでした"},
+	"resets.ineligible":        {EN: "not eligible for limit resets (%s)", ZH: "该账户不能使用上限重置（%s）", JA: "このアカウントは上限リセットの対象外です（%s）"},
+	"resets.no_grants":         {EN: "no limit resets", ZH: "没有可用的上限重置", JA: "上限リセットはありません"},
+	"resets.state.usable":      {EN: "usable now", ZH: "现在可用", JA: "今すぐ使用可"},
+	"resets.state.paused":      {EN: "paused", ZH: "已暂停", JA: "一時停止中"},
+	"resets.state.used_up":     {EN: "used up", ZH: "已用完", JA: "使用済み"},
+	"resets.state.needs_limit": {EN: "usable when at a limit", ZH: "到达上限后才能用", JA: "上限到達時に使用可"},
+	"resets.state.unavailable": {EN: "unavailable (%s)", ZH: "不可用（%s）", JA: "利用不可（%s）"},
+	"resets.type.weekly":       {EN: "Weekly reset", ZH: "周额度重置", JA: "週次リセット"},
+	"resets.type.session":      {EN: "Session reset", ZH: "会话额度重置", JA: "セッションリセット"},
+	"resets.cooldown": {
+		EN: "next reset possible after %s",
+		ZH: "%s 之后才能再次重置",
+		JA: "次のリセットは %s 以降に可能です",
+	},
+	"usage.resets_available": {EN: "limit resets available: %d (cswitch resets)", ZH: "可用的上限重置：%d 次（cswitch resets 查看）", JA: "利用可能な上限リセット: %d 件（cswitch resets）"},
+	"reset.confirm_details": {
+		EN: "Account %s (%s): use \"%s\" (%d of %d left, expires %s)",
+		ZH: "账户 %s（%s）：使用「%s」（剩余 %d / %d，%s 到期）",
+		JA: "アカウント %s（%s）：「%s」を使います（残り %d / %d、有効期限 %s）",
+	},
+	"prompt.reset": {EN: "Use it now? This cannot be undone. [y/N] ", ZH: "现在使用吗？用掉后无法退回。[y/N] ", JA: "今すぐ使いますか？元に戻せません。[y/N] "},
+	"info.reset_done": {
+		EN: "Used \"%s\" for %s; resets left: %s",
+		ZH: "已为 %[2]s 使用「%[1]s」；剩余 %[3]s 次",
+		JA: "%[2]s の「%[1]s」を使いました。残り %[3]s 件",
+	},
+	"err.reset_none":          {EN: "%s has no limit resets", ZH: "%s 没有可用的上限重置", JA: "%s には上限リセットがありません"},
+	"err.reset_no_such_grant": {EN: "no reset %q for %s (see: cswitch resets)", ZH: "%[2]s 没有 ID 为 %[1]q 的重置（运行 cswitch resets 查看）", JA: "%[2]s に ID %[1]q のリセットはありません（cswitch resets で確認）"},
+	"err.reset_not_usable":    {EN: "\"%s\" has no resets left or is paused", ZH: "「%s」已用完或已暂停", JA: "「%s」は使用済みか一時停止中です"},
+	"err.reset_cooldown":      {EN: "limit resets are cooling down until %s", ZH: "上限重置处于冷却期，%s 之后才能使用", JA: "上限のリセットは %s までクールダウン中です"},
+	"err.reset_unavailable":   {EN: "\"%s\" can't be used now (%s)", ZH: "「%s」现在不能使用（%s）", JA: "「%s」は現在使えません（%s）"},
+	"err.usage_stale":         {EN: "the last reading is %d minutes old", ZH: "最近一次读数已是 %d 分钟前的", JA: "最後の取得から %d 分たっています"},
+	"err.reset_needs_limit": {
+		EN: "\"%s\" can only be used once the account is at a limit",
+		ZH: "「%s」只能在账户达到额度上限后使用",
+		JA: "「%s」はアカウントが上限に達したときにのみ使えます",
+	},
+	"err.reset_refused":   {EN: "the reset was not applied: %s (%s)", ZH: "重置没有生效：%s（%s）", JA: "リセットは適用されませんでした: %s（%s）"},
+	"err.reset_bad_grant": {EN: "invalid reset ID %q", ZH: "无效的重置 ID %q", JA: "無効なリセット ID %q"},
+	"err.reset_claim":     {EN: "could not use the reset: %w", ZH: "使用重置失败：%w", JA: "リセットを使えませんでした: %w"},
+
+	"flag.usage_refresh": {EN: "fetch now instead of using recent cached readings", ZH: "立即重新查询，不使用最近的缓存数据", JA: "最近のキャッシュを使わずに今すぐ取得する"},
+	"usage.age":          {EN: "(%d min ago)", ZH: "（%d 分钟前的数据）", JA: "（%d 分前のデータ）"},
+	"err.usage_rate_limited": {
+		EN: "the usage endpoint is rate limiting; retrying in about %d min",
+		ZH: "额度接口暂时限流，约 %d 分钟后再查",
+		JA: "使用量エンドポイントがレート制限中です。約 %d 分後に再取得します",
+	},
+
+	"cmd.auto.short": {EN: "Switch accounts automatically before hitting a limit", ZH: "快到额度上限时自动切换账户", JA: "上限に達する前に自動でアカウントを切り替え"},
+	"cmd.auto.long": {
+		EN: `Watch Claude Code's account and switch to the account with the most room left
+when its session or weekly usage reaches the threshold. Only Claude Code is
+switched (Claude Desktop would have to restart). Usage readings follow the
+cache policy, so the usage endpoint is not hammered.
+
+  cswitch auto              run in this terminal
+  cswitch auto --install    run in the background, started at login
+  cswitch auto --status     is the background service running?
+  cswitch auto --uninstall  stop and remove it`,
+		ZH: `监视 Claude Code 当前的账户，当前会话或每周额度达到阈值时，自动切换到余量最多的账户。
+只切换 Claude Code（切换 Claude Desktop 需要重启它）。额度读取遵循缓存策略，不会频繁请求接口。
+
+  cswitch auto              在当前终端运行
+  cswitch auto --install    作为后台服务运行，登录后自动启动
+  cswitch auto --status     查看后台服务状态
+  cswitch auto --uninstall  停止并移除后台服务`,
+		JA: `Claude Code のアカウントを監視し、セッションまたは週間の使用量がしきい値に達したら、
+余裕が最も大きいアカウントに切り替えます。切り替えるのは Claude Code のみです
+（Claude Desktop は再起動が必要なため）。使用量の取得はキャッシュ方針に従います。
+
+  cswitch auto              このターミナルで実行
+  cswitch auto --install    バックグラウンドで実行（ログイン時に起動）
+  cswitch auto --status     バックグラウンドサービスの状態
+  cswitch auto --uninstall  停止して削除`,
+	},
+	"flag.auto_threshold":          {EN: "switch away at this session usage, percent", ZH: "当前会话额度达到这个百分比时切换", JA: "セッション使用量がこの割合に達したら切り替え（%）"},
+	"flag.auto_weekly_threshold":   {EN: "switch away at this weekly usage, percent (default: --threshold)", ZH: "每周额度达到这个百分比时切换（默认同 --threshold）", JA: "週間使用量がこの割合に達したら切り替え（%、既定は --threshold）"},
+	"flag.auto_model":              {EN: "also watch these per-model weekly limits, e.g. Fable", ZH: "同时关注这些模型的每周额度，例如 Fable", JA: "モデル別の週間上限も見る（例: Fable）"},
+	"flag.auto_interval":           {EN: "time between checks", ZH: "检查间隔", JA: "チェック間隔"},
+	"flag.auto_cooldown":           {EN: "minimum time between switches", ZH: "两次切换之间的最短间隔", JA: "切り替えの最小間隔"},
+	"flag.auto_dry_run":            {EN: "only log what would be done", ZH: "只记录会做什么，不实际切换", JA: "実行内容をログに出すだけで切り替えない"},
+	"flag.auto_once":               {EN: "check once and exit (for cron)", ZH: "只检查一次后退出（用于 cron）", JA: "1 回だけチェックして終了（cron 用）"},
+	"flag.auto_install":            {EN: "install and start the background service with these flags", ZH: "用这些参数安装并启动后台服务", JA: "これらのオプションでバックグラウンドサービスをインストールして起動"},
+	"flag.auto_uninstall":          {EN: "stop and remove the background service", ZH: "停止并移除后台服务", JA: "バックグラウンドサービスを停止して削除"},
+	"flag.auto_status":             {EN: "show whether the background service runs", ZH: "查看后台服务是否在运行", JA: "バックグラウンドサービスの状態を表示"},
+	"err.auto_bad_threshold":       {EN: "thresholds must be between 50 and 100", ZH: "阈值必须在 50 到 100 之间", JA: "しきい値は 50〜100 の範囲で指定してください"},
+	"err.auto_no_reading":          {EN: "no usage reading for %s: %v", ZH: "读取不到 %s 的额度：%v", JA: "%s の使用量を取得できません: %v"},
+	"err.auto_service_unsupported": {EN: "background service is not supported on %s", ZH: "%s 上不支持后台服务", JA: "%s ではバックグラウンドサービスに対応していません"},
+	"auto.started": {
+		EN: "auto-switch started: session %.0f%%, weekly %.0f%%, every %s",
+		ZH: "自动切换已启动：会话阈值 %.0f%%，每周阈值 %.0f%%，每 %s 检查一次",
+		JA: "自動切り替えを開始しました: セッション %.0f%%、週間 %.0f%%、%s ごと",
+	},
+	"auto.tick_error":    {EN: "check failed: %v", ZH: "检查失败：%v", JA: "チェックに失敗しました: %v"},
+	"auto.not_logged_in": {EN: "Claude Code is not logged in; nothing to do", ZH: "Claude Code 未登录，跳过", JA: "Claude Code がログインしていないため何もしません"},
+	"auto.all_exhausted": {
+		EN: "%s is near its limit, but no other account has room left",
+		ZH: "%s 快到上限了，但没有其他账户还有余量",
+		JA: "%s は上限に近いですが、余裕のある他のアカウントがありません",
+	},
+	"auto.cooldown": {
+		EN: "%s is near its limit; switching to %s after the cooldown (%ds)",
+		ZH: "%s 快到上限了；冷却结束后（%[3]d 秒）切换到 %[2]s",
+		JA: "%s は上限に近いです。クールダウン後（%[3]d 秒）に %[2]s へ切り替えます",
+	},
+	"auto.would_switch": {EN: "would switch %s → %s (dry run)", ZH: "将从 %s 切换到 %s（试运行，未实际切换）", JA: "%s → %s に切り替えます（ドライラン）"},
+	"auto.switched":     {EN: "switched %s → %s", ZH: "已从 %s 切换到 %s", JA: "%s → %s に切り替えました"},
+	"info.auto_installed": {
+		EN: "Background auto-switch installed and started (%s); log: %s",
+		ZH: "后台自动切换已安装并启动（%s）；日志：%s",
+		JA: "バックグラウンド自動切り替えをインストールして起動しました（%s）。ログ: %s",
+	},
+	"info.auto_uninstalled":     {EN: "Background auto-switch stopped and removed", ZH: "后台自动切换已停止并移除", JA: "バックグラウンド自動切り替えを停止して削除しました"},
+	"auto.status_running":       {EN: "background auto-switch: running (log: %s)", ZH: "后台自动切换：运行中（日志：%s）", JA: "バックグラウンド自動切り替え: 実行中（ログ: %s）"},
+	"auto.status_stopped":       {EN: "background auto-switch: installed but not running (log: %s)", ZH: "后台自动切换：已安装但未运行（日志：%s）", JA: "バックグラウンド自動切り替え: インストール済み・停止中（ログ: %s）"},
+	"auto.status_not_installed": {EN: "background auto-switch: not installed (cswitch auto --install)", ZH: "后台自动切换：未安装（cswitch auto --install）", JA: "バックグラウンド自動切り替え: 未インストール（cswitch auto --install）"},
+	"auto.status_last_switch":   {EN: "last automatic switch: %s", ZH: "上次自动切换：%s", JA: "最後の自動切り替え: %s"},
+	"err.claude_lock_busy": {
+		EN: "Claude Code is busy (lock %s held); try again in a moment",
+		ZH: "Claude Code 正忙（锁 %s 被占用），请稍后再试",
+		JA: "Claude Code が処理中です（ロック %s 使用中）。少し待ってから再試行してください",
+	},
+
+	"cmd.run.short": {EN: "Start Claude Code as an account in this terminal only", ZH: "只在当前终端以指定账户启动 Claude Code", JA: "このターミナルだけで指定アカウントの Claude Code を起動"},
+	"cmd.run.long": {
+		EN: `Start Claude Code as <name> in this terminal only (session mode). Other
+terminals and the global login are not affected, so several accounts can work
+at the same time. Without a name, the account mapped to this directory
+(cswitch map) is used, or plain claude when none is.
+
+Sessions share ~/.claude's settings, CLAUDE.md, skills, plugins and history.
+Everything after the name is passed to claude, flags included
+(cswitch run work --resume). Without a name, put -- before claude's arguments.`,
+		ZH: `只在当前终端以 <名称> 启动 Claude Code（会话模式）。其他终端和全局登录不受影响，
+所以可以同时用多个账户。不指定名称时，使用当前目录绑定的账户（cswitch map）；
+没有绑定就直接启动普通的 claude。
+
+会话共享 ~/.claude 的设置、CLAUDE.md、skills、插件和对话记录。
+名称后面的参数（包括选项）会原样传给 claude，例如 cswitch run work --resume。
+不指定名称时，在 claude 的参数前加 --。`,
+		JA: `このターミナルだけで <名前> として Claude Code を起動します（セッションモード）。
+他のターミナルやグローバルのログインには影響しないため、複数のアカウントを同時に
+使えます。名前を省略すると、このディレクトリに割り当てたアカウント（cswitch map）、
+割り当てがなければ通常の claude を起動します。
+
+セッションは ~/.claude の設定・CLAUDE.md・skills・プラグイン・会話履歴を共有します。
+名前より後の引数はオプションも含めて claude にそのまま渡します
+（cswitch run work --resume）。名前を省略するときは claude の引数の前に -- を付けます。`,
+	},
+	"info.run_mapped":      {EN: "%s is mapped to %s", ZH: "%s 绑定的账户是 %s", JA: "%s は %s に割り当てられています"},
+	"info.run_session":     {EN: "Starting Claude Code as %s (%s) in this terminal", ZH: "在当前终端以 %s（%s）启动 Claude Code", JA: "このターミナルで %s（%s）として Claude Code を起動します"},
+	"warn.session_capture": {EN: "could not save the session's login back: %v", ZH: "无法把会话的登录保存回账户：%v", JA: "セッションのログインを保存し直せませんでした: %v"},
+	"err.session_running": {
+		EN: "a cswitch run session of %s is running and holds its login; exit it first",
+		ZH: "%s 有正在运行的 cswitch run 会话，它持有这个账户的登录；请先退出该会话",
+		JA: "%s の cswitch run セッションが実行中で、そのログインを使っています。先に終了してください",
+	},
+	"err.session_token_expired": {
+		EN: "the token of %s's running session has expired; the session renews it on its next request",
+		ZH: "%s 正在运行的会话的 token 已过期；会话下次请求时会自己续期",
+		JA: "%s の実行中セッションのトークンの期限が切れています。次のリクエスト時にセッションが更新します",
+	},
+	"cmd.map.short":    {EN: "Map a directory to an account for cswitch run, or list mappings", ZH: "把目录绑定到账户（用于 cswitch run），或列出绑定", JA: "ディレクトリをアカウントに割り当て（cswitch run 用）、または一覧表示"},
+	"cmd.unmap.short":  {EN: "Remove a directory mapping", ZH: "解除目录绑定", JA: "ディレクトリの割り当てを解除"},
+	"map.header":       {EN: "DIRECTORY\tACCOUNT", ZH: "目录\t账户", JA: "ディレクトリ\tアカウント"},
+	"info.no_mappings": {EN: "No directory mappings. Add one with: cswitch map <name> [dir]", ZH: "还没有目录绑定。用 cswitch map <名称> [目录] 添加", JA: "割り当てはありません。cswitch map <名前> [ディレクトリ] で追加できます"},
+	"info.mapped":      {EN: "%s → %s", ZH: "%s → %s", JA: "%s → %s"},
+	"info.unmapped":    {EN: "Removed the mapping of %s", ZH: "已解除 %s 的绑定", JA: "%s の割り当てを解除しました"},
+	"err.map_not_dir":  {EN: "%s is not a directory", ZH: "%s 不是目录", JA: "%s はディレクトリではありません"},
+	"err.map_none":     {EN: "%s is not mapped", ZH: "%s 没有绑定账户", JA: "%s は割り当てられていません"},
 }

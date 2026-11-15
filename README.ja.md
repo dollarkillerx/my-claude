@@ -93,9 +93,82 @@ cswitch login
 cswitch work
 ```
 
-`cswitch <名前>` で両方のアプリを切り替えます。`--code-only` / `--desktop-only` で片方だけ切り替えます。切り替えのたびに、まず現在のログイン状態を保存します。切り替え後は実行中の `claude` セッションを再起動してください。再起動するまでは元のアカウントのままです。
+`cswitch <名前>` で両方のアプリを切り替えます。`--code-only` / `--desktop-only` で片方だけ切り替えます。切り替えのたびに、まず現在のログイン状態を保存します。実行中の `claude` セッションは約 30 秒以内に新しいアカウントに切り替わります（Claude Code がログイン情報を読み直します）。すぐに反映するには再起動してください。
 
-### 言語
+### 言語を設定する
+
+```bash
+cswitch lang ja
+```
+
+設定は保存され、以降の実行でも使われます。`cswitch lang auto` でシステムに合わせる設定に戻ります。
+
+### 上限のリセット
+
+アカウントによっては**上限のリセット**が付与されます。週間の使用量やモデル別の利用枠を 1 回だけ無料で戻せるものです（アプリの使用量ページにある「無料でリセット」）。
+
+```bash
+cswitch resets            # 各アカウントのリセット: 残り回数、有効期限、今使えるか
+cswitch reset work        # 1 回使う（Claude Code が次に使うもの）。実行前に確認します
+cswitch reset work <id>   # 指定したものを使う
+```
+
+使ったリセットは戻せないため、cswitch が自動で使うことはありません。`cswitch usage` は、リセットが使えるアカウントを表示します。
+
+### 自動切り替え
+
+```bash
+cswitch auto                          # このターミナルで監視
+cswitch auto --threshold 80           # 80% で切り替え（既定 90%）
+cswitch auto --weekly-threshold 97    # 週間の使用量はもう少し使い切る
+cswitch auto --model Fable            # Fable の週間上限も考慮
+cswitch auto --install                # バックグラウンドで実行（ログイン時に起動）
+cswitch auto --status                 # 実行中か、最後の切り替え
+cswitch auto --uninstall              # 停止して削除
+```
+
+使用中のアカウントのセッションまたは週間の使用量がしきい値に達すると、余裕が最も大きいアカウントに Claude Code を切り替えます。切り替えの間隔は最低 5 分で、余裕のあるアカウントがないときはログに記録するだけです。Claude Desktop は再起動が必要なため、切り替えるのは Claude Code のみです。バックグラウンドサービスは macOS では launchd の LaunchAgent、Linux では systemd ユーザーサービスで、ログは `~/.config/cswitch/auto.log` で、2 MB 以内に保たれます（それ以前の分は `auto.log.1`）。`--once` は 1 回だけチェック（cron 用）、`--dry-run` は実行内容をログに出すだけです。
+
+### 複数アカウントを同時に、ディレクトリごとに
+
+```bash
+cswitch run work                 # このターミナルだけで "work" として Claude Code を起動
+cswitch run work --resume        # 名前より後の引数は claude にそのまま渡す
+cswitch map work ~/work          # ディレクトリ（とその下すべて）を割り当て
+cd ~/work/project && cswitch run # → "work" として起動
+cswitch map                      # 割り当て一覧。cswitch unmap ~/work で解除
+```
+
+`cswitch run` は Claude Code 自身の `CLAUDE_CONFIG_DIR` を使います。アカウントごとに `~/.config/cswitch/sessions/` にセッションディレクトリを持つため、他のターミナルやグローバルのログインには影響せず、複数のアカウントを並行して使えます。セッションは `~/.claude` の設定・CLAUDE.md・skills・プラグイン・会話履歴を共有します（`--resume` はアカウントをまたいで使えます）。セッションが自分で更新したトークンは、終了時にアカウントへ保存し直します。先にターミナルを閉じた場合も、次に cswitch がそのアカウントを使うときに保存します。セッションの実行中は、同じログインの複製が互いを無効にしてしまうため、グローバルのログインをそのアカウントに切り替えません。割り当てのないディレクトリや、すでにグローバルのログインになっているアカウントを指定した場合は、そのまま `claude` を起動します。
+
+### 使用量の取得とレート制限
+
+使用量エンドポイント自体にレート制限があるため、取得結果はキャッシュされます。使用中のアカウントと上限に近いアカウントは 1 分ごと、その他は 5 分ごとに取得します。429 が返ったときはサーバーの `Retry-After`（なければ 1 分から最大 30 分まで段階的に延長）だけ待ち、その間は前回のデータを何分前のものか付けて表示します。`cswitch usage --refresh` で今すぐ取得します。
+
+## コマンド一覧
+
+| コマンド | 説明 |
+| --- | --- |
+| `cswitch` | アカウントと使用量を一覧表示し、選んで切り替え |
+| `cswitch <名前>` | アカウントを切り替え（`cswitch use <名前>` と同じ） |
+| `cswitch login [名前]` | ログアウトせずに別のアカウントにログイン。`--desktop`、`--desktop-only` |
+| `cswitch usage [名前...]` | 使用量を表示。`--refresh` で今すぐ取得、`--all` で内部の項目も表示 |
+| `cswitch resets [名前...]` | 上限のリセットを表示 |
+| `cswitch reset <名前> [id]` | 上限のリセットを 1 回使う（確認あり、`-y` で省略） |
+| `cswitch auto` | 上限が近づいたら自動で切り替え。`--install`、`--status`、`--uninstall`、`--once`、`--dry-run` |
+| `cswitch run [名前] [引数]` | このターミナルだけで指定アカウントの Claude Code を起動 |
+| `cswitch map [名前] [ディレクトリ]` / `unmap [ディレクトリ]` | `run` 用にディレクトリをアカウントに割り当て、一覧表示、解除 |
+| `cswitch list` | 保存済みアカウントの一覧（エイリアス `ls`） |
+| `cswitch current` | 各アプリが使用中のアカウントを表示 |
+| `cswitch add [名前]` | 現在のログインを今すぐ保存（通常は不要。切り替え時に自動保存されます） |
+| `cswitch rename <旧名> <新名>` | アカウントの名前を変更（エイリアス `mv`） |
+| `cswitch remove <名前>` | 保存済みアカウントを削除（エイリアス `rm`）。ログアウトはしません。`-y` |
+| `cswitch lang [en\|zh\|ja\|auto]` | 表示言語の確認・設定。設定は保存されます |
+| `cswitch sync` | Desktop のローカルセッションを今すぐ全アカウントで共有（切り替え時にも自動実行） |
+
+切り替えのオプション（`cswitch <名前>` と `use`）: `--code-only`、`--desktop-only`、`--no-launch`、`--force`。`--force` は、アカウントを特定できない Desktop のログインを破棄します（通常は上書きを拒否します）。グローバルオプション: `--lang`、`--version`。
+
+## 言語
 
 表示言語は次の順で決まります:
 
@@ -135,6 +208,10 @@ cswitch work
 ├── profiles/<名前>/desktop/       # このアカウントの Desktop の Cookie と Web ストレージ
 ├── backups/                       # cswitch が変更する前のファイルのコピー（各ファイル最新 10 件）
 │   └── sessions-trash/            # あるアカウントで削除された Desktop セッション
+├── sessions/<名前>/               # cswitch run: アカウントごとの CLAUDE_CONFIG_DIR
+├── mappings.json                  # cswitch map: ディレクトリ → アカウント
+├── usage-cache.json               # 最近の使用量データ（レート制御）
+├── auto.log, auto-state.json      # cswitch auto: ログ（と auto.log.1）と最後の切り替え
 └── sync-state.json                # 前回のセッション同期時のファイル一覧
 ```
 

@@ -90,7 +90,7 @@ This saves the current login, then runs `claude auth login` so you can sign in t
 cswitch work
 ```
 
-`cswitch <name>` switches both apps; `--code-only` / `--desktop-only` switch one. The current logins are saved before every switch. Restart running `claude` sessions afterwards; until then they keep using the old account.
+`cswitch <name>` switches both apps; `--code-only` / `--desktop-only` switch one. The current logins are saved before every switch. Running `claude` sessions pick up the new account within about 30 seconds (Claude Code re-reads its login); restart them to switch right away.
 
 ### Set the language
 
@@ -100,6 +100,48 @@ cswitch lang zh
 
 The choice is remembered for every later run. `cswitch lang auto` follows the system again.
 
+### Limit resets
+
+Some accounts get **limit resets**: free one-time refills of the weekly usage or of a model's allowance (the "Reset for free" buttons on the apps' usage page).
+
+```bash
+cswitch resets            # every account's resets: how many left, expiry, usable now?
+cswitch reset work        # use one (the one Claude Code would pick); asks to confirm
+cswitch reset work <id>   # use a specific one
+```
+
+A used reset can't be given back, so cswitch never uses one on its own. `cswitch usage` mentions when an account has resets available.
+
+### Automatic switching
+
+```bash
+cswitch auto                          # watch in this terminal
+cswitch auto --threshold 80           # switch away at 80% (default 90%)
+cswitch auto --weekly-threshold 97    # let the weekly window run higher
+cswitch auto --model Fable            # also count the Fable weekly limit
+cswitch auto --install                # run in the background, started at login
+cswitch auto --status                 # is it running? last switch?
+cswitch auto --uninstall              # stop and remove it
+```
+
+When the active account's session or weekly usage reaches the threshold, cswitch switches Claude Code to the account with the most room left. It waits a cooldown (5 minutes) between switches and logs when no account has room. Only Claude Code is switched, because Claude Desktop would have to restart. The background service is a launchd LaunchAgent on macOS and a systemd user service on Linux; it logs to `~/.config/cswitch/auto.log`, which is kept under 2 MB (the previous part goes to `auto.log.1`). `--once` checks once, for cron, and `--dry-run` only logs what it would do.
+
+### Several accounts at once, per directory
+
+```bash
+cswitch run work                 # Claude Code as "work" in this terminal only
+cswitch run work --resume        # everything after the name goes to claude
+cswitch map work ~/work          # bind a directory (and everything below it)
+cd ~/work/project && cswitch run # → starts as "work"
+cswitch map                      # list bindings; cswitch unmap ~/work removes one
+```
+
+`cswitch run` uses Claude Code's own `CLAUDE_CONFIG_DIR`: each account gets a session directory under `~/.config/cswitch/sessions/`, so other terminals and the global login are untouched and several accounts can work in parallel. Sessions share `~/.claude`'s settings, CLAUDE.md, skills, plugins and conversation history (so `--resume` works across accounts). The session's own token is saved back to the account when it exits, or, if the terminal was closed first, the next time cswitch uses the account. While a session runs, the global login won't be switched onto that account, since two copies of one login would invalidate each other. In an unbound directory, or for the account that is already the global login, `cswitch run` just starts `claude`.
+
+### Usage readings and rate limits
+
+The usage endpoint is itself rate limited, so readings are cached: the active account, and any account near a limit, every minute; the others every 5 minutes. A 429 backs off for the server's `Retry-After` (or 1 → 30 minutes); meanwhile the last reading is shown with its age. `cswitch usage --refresh` fetches now.
+
 ## Commands
 
 | Command | Description |
@@ -107,7 +149,12 @@ The choice is remembered for every later run. `cswitch lang auto` follows the sy
 | `cswitch` | List accounts with usage and pick one to switch to |
 | `cswitch <name>` | Switch to an account (same as `cswitch use <name>`) |
 | `cswitch login [name]` | Log in to another account without logging out. `--desktop`, `--desktop-only` |
-| `cswitch usage [name...]` | Show plan usage. `--all` also shows internal entries |
+| `cswitch usage [name...]` | Show plan usage. `--refresh` fetches now, `--all` adds internal entries |
+| `cswitch resets [name...]` | Show limit resets |
+| `cswitch reset <name> [id]` | Use one limit reset (asks to confirm; `-y` to skip) |
+| `cswitch auto` | Switch automatically near a limit. `--install`, `--status`, `--uninstall`, `--once`, `--dry-run` |
+| `cswitch run [name] [args]` | Start Claude Code as an account in this terminal only |
+| `cswitch map [name] [dir]` / `unmap [dir]` | Bind a directory to an account for `run`, list or remove bindings |
 | `cswitch list` | List saved accounts (alias `ls`) |
 | `cswitch current` | Show which account each app is using |
 | `cswitch add [name]` | Save the current logins now (rarely needed; switching saves them) |
@@ -158,6 +205,10 @@ See [docs/how-it-works.md](docs/how-it-works.md) for the details.
 ├── profiles/<name>/desktop/       # Desktop cookies + web storage for this account
 ├── backups/                       # copies of every file before cswitch changed it (newest 10 each)
 │   └── sessions-trash/            # Desktop sessions deleted in one account
+├── sessions/<name>/               # cswitch run: per-account CLAUDE_CONFIG_DIR
+├── mappings.json                  # cswitch map: directory → account
+├── usage-cache.json               # recent usage readings (rate control)
+├── auto.log, auto-state.json      # cswitch auto: log (+ auto.log.1) and last switch
 └── sync-state.json                # what the last session sync saw
 ```
 

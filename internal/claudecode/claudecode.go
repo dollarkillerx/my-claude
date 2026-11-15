@@ -4,18 +4,14 @@ package claudecode
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"github.com/dollarkillerx/my-claude/internal/fsutil"
 	"github.com/dollarkillerx/my-claude/internal/i18n"
-	"github.com/dollarkillerx/my-claude/internal/keychain"
 )
 
 // KeychainService is the item Claude Code stores its OAuth credentials in.
@@ -195,68 +191,14 @@ func (c *Credentials) WithTokens(access, refresh string, expiresAt time.Time) (*
 }
 
 // ReadCredentials returns the live Claude Code credentials.
-func ReadCredentials() (*Credentials, error) {
-	if path := credentialsFile(); path != "" {
-		data, err := os.ReadFile(path)
-		if os.IsNotExist(err) {
-			return nil, ErrNotLoggedIn
-		}
-		if err != nil {
-			return nil, err
-		}
-		return ParseCredentials(string(data))
-	}
-	raw, err := keychain.Get(KeychainService(), "")
-	if errors.Is(err, keychain.ErrNotFound) {
-		return nil, ErrNotLoggedIn
-	}
-	if err != nil {
-		return nil, err
-	}
-	return ParseCredentials(raw)
-}
+func ReadCredentials() (*Credentials, error) { return Default.ReadCredentials() }
 
-// WriteCredentials replaces the live Claude Code credentials. On macOS the
-// existing keychain item's account name is reused so Claude Code keeps
-// finding it.
-func WriteCredentials(c *Credentials) error {
-	if path := credentialsFile(); path != "" {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return err
-		}
-		return fsutil.AtomicWrite(path, []byte(c.Raw), 0o600)
-	}
-	acct, err := keychain.Account(KeychainService())
-	if errors.Is(err, keychain.ErrNotFound) {
-		u, uerr := user.Current()
-		if uerr != nil {
-			return uerr
-		}
-		acct = u.Username
-	} else if err != nil {
-		return err
-	}
-	return keychain.Set(KeychainService(), acct, c.Raw)
-}
+// WriteCredentials replaces the live Claude Code credentials.
+func WriteCredentials(c *Credentials) error { return Default.WriteCredentials(c) }
 
 // DeleteCredentials removes Claude Code's credentials (used to undo a write
 // when Claude Code had no credentials before).
-func DeleteCredentials() error {
-	if path := credentialsFile(); path != "" {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}
-	acct, err := keychain.Account(KeychainService())
-	if errors.Is(err, keychain.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return keychain.Delete(KeychainService(), acct)
-}
+func DeleteCredentials() error { return Default.DeleteCredentials() }
 
 // Account is the subset of oauthAccount shown to the user.
 type Account struct {
@@ -269,37 +211,9 @@ type Account struct {
 }
 
 // ReadAccount returns oauthAccount from ~/.claude.json, raw and parsed.
-func ReadAccount() (json.RawMessage, *Account, error) {
-	m, err := fsutil.ReadJSONObject(ConfigPath())
-	if err != nil {
-		return nil, nil, err
-	}
-	raw, ok := m["oauthAccount"]
-	if !ok || string(raw) == "null" {
-		return nil, nil, i18n.E("err.code_no_oauth_account")
-	}
-	var a Account
-	if err := json.Unmarshal(raw, &a); err != nil {
-		return nil, nil, i18n.E("err.code_oauth_account_parse", err)
-	}
-	if a.AccountUUID == "" {
-		return nil, nil, i18n.E("err.code_oauth_account_parse", errors.New("accountUuid"))
-	}
-	return raw, &a, nil
-}
+func ReadAccount() (json.RawMessage, *Account, error) { return Default.ReadAccount() }
 
 // WriteAccount replaces oauthAccount in ~/.claude.json, leaving every other key alone.
 func WriteAccount(raw json.RawMessage, backupDir string) error {
-	path := ConfigPath()
-	m, err := fsutil.ReadJSONObject(path)
-	if os.IsNotExist(err) {
-		m = map[string]json.RawMessage{} // Claude Code creates it on first run
-	} else if err != nil {
-		return err
-	}
-	if err := fsutil.Backup(path, backupDir); err != nil {
-		return i18n.E("err.backup", path, err)
-	}
-	m["oauthAccount"] = raw
-	return fsutil.WriteJSONObject(path, m)
+	return Default.WriteAccount(raw, backupDir)
 }

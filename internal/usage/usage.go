@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,12 +31,18 @@ func env(key, def string) string {
 
 var client = &http.Client{Timeout: 20 * time.Second}
 
-// Endpoints; CSWITCH_TOKEN_URL, CSWITCH_USAGE_URL and CSWITCH_PROFILE_URL
-// override them for testing.
+// Endpoints, as Claude Code uses them. CSWITCH_TOKEN_URL, CSWITCH_USAGE_URL,
+// CSWITCH_PROFILE_URL and CSWITCH_API_URL override them for testing.
 func tokenURL() string {
-	return env("CSWITCH_TOKEN_URL", "https://console.anthropic.com/v1/oauth/token")
+	return env("CSWITCH_TOKEN_URL", "https://platform.claude.com/v1/oauth/token")
 }
-func usageURL() string { return env("CSWITCH_USAGE_URL", "https://api.anthropic.com/api/oauth/usage") }
+
+// usageURL asks for the limit-reset status too (cedar_ember=1) and skips the
+// spend block, like Claude Code's own status read.
+func usageURL() string {
+	return env("CSWITCH_USAGE_URL", "https://api.anthropic.com/api/oauth/usage") + "?cedar_ember=1&skip_spend=1"
+}
+func apiURL() string { return env("CSWITCH_API_URL", "https://api.anthropic.com") }
 func profileURL() string {
 	return env("CSWITCH_PROFILE_URL", "https://api.anthropic.com/api/oauth/profile")
 }
@@ -169,9 +176,11 @@ type Limit struct {
 
 // Report is a parsed usage response. Limits is preferred when present;
 // Windows holds the older per-window fields (and internal codenamed ones).
+// Resets is the account's limit-reset status, nil when the server sent none.
 type Report struct {
 	Limits  []Limit
 	Windows []Window
+	Resets  *Resets
 }
 
 // Session and Weekly return the session and overall weekly limits, or nil.
@@ -189,6 +198,15 @@ func (r *Report) find(kind string) *Limit {
 
 // Fetch returns the usage report for an access token.
 func Fetch(ctx context.Context, accessToken string) (*Report, error) {
+	data, err := FetchRaw(ctx, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	return Parse(data)
+}
+
+// FetchRaw returns the usage response body, for callers that cache it.
+func FetchRaw(ctx context.Context, accessToken string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, usageURL(), nil)
 	if err != nil {
 		return nil, err
@@ -200,7 +218,7 @@ func Fetch(ctx context.Context, accessToken string) (*Report, error) {
 	if err != nil {
 		return nil, i18n.E("err.fetch_usage", err)
 	}
-	return Parse(data)
+	return data, nil
 }
 
 // Parse reads every top-level object that has a "utilization" field as a
@@ -211,6 +229,9 @@ func Parse(data []byte) (*Report, error) {
 		return nil, i18n.E("err.fetch_usage", err)
 	}
 	r := &Report{}
+	if raw, ok := m["cedar_ember"]; ok {
+		r.Resets = parseResets(raw)
+	}
 	if raw, ok := m["limits"]; ok {
 		var limits []struct {
 			Kind     string   `json:"kind"`
@@ -280,7 +301,11 @@ func do(req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, Message: errorMessage(data)}
+		he := &HTTPError{StatusCode: resp.StatusCode, Message: errorMessage(data)}
+		if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && secs > 0 {
+			he.RetryAfter = time.Duration(secs) * time.Second
+		}
+		return nil, he
 	}
 	return data, nil
 }
@@ -289,6 +314,17 @@ func do(req *http.Request) ([]byte, error) {
 type HTTPError struct {
 	StatusCode int
 	Message    string
+	RetryAfter time.Duration // from a Retry-After header, if any
+}
+
+// IsRateLimited reports whether err is a 429 response, and how long the
+// server asked to wait (0 if it did not say).
+func IsRateLimited(err error) (bool, time.Duration) {
+	var he *HTTPError
+	if errors.As(err, &he) && he.StatusCode == http.StatusTooManyRequests {
+		return true, he.RetryAfter
+	}
+	return false, 0
 }
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Message) }

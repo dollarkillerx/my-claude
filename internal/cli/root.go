@@ -45,6 +45,7 @@ func NewRoot() *cobra.Command {
 	// Parsed early by Execute; registered here so it shows up in help and is accepted.
 	root.PersistentFlags().StringVar(&lang, "lang", "", i18n.T("flag.lang"))
 	root.AddCommand(addCmd(), loginCmd(), listCmd(), currentCmd(), useCmd(), usageCmd(),
+		resetsCmd(), resetCmd(), autoCmd(), runCmd(), mapCmd(), unmapCmd(),
 		renameCmd(), removeCmd(), langCmd(), syncCmd())
 	localizeHelp(root)
 	// "cswitch <name>" would run a command of the same name instead of

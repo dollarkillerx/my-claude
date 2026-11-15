@@ -90,7 +90,7 @@ func TestHelpIsLocalized(t *testing.T) {
 	defer i18n.SetLang(string(i18n.Current()))
 	want := map[string][]string{
 		"en": {"Usage:", "Available Commands:", "Flags:", "help for cswitch", "Switch Claude Code and Claude Desktop"},
-		"zh": {"用法：", "可用命令：", "选项：", "cswitch 的帮助", "切换到指定 profile"},
+		"zh": {"用法：", "可用命令：", "选项：", "cswitch 的帮助", "切换到指定账户"},
 		"ja": {"使い方:", "利用可能なコマンド:", "オプション:", "cswitch のヘルプ", "プロファイルに切り替え"},
 	}
 	for lang, needles := range want {

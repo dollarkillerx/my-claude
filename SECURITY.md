@@ -11,10 +11,11 @@ cswitch handles OAuth tokens and session cookies for your Claude accounts. This 
   - Claude Code credentials longer than about 2 KB (for example with many MCP tokens) must go on `security`'s command line, because its stdin mode truncates long lines. While that `security` process runs, a fraction of a second, other local users could see the value in the process list. Claude Code writes the item the same way itself. cswitch's own secrets never take this path.
   - `security`'s output is never included in error messages, because it can echo the secret.
 - **Interrupting is safe.** A Ctrl-C during a Desktop switch is deferred until the switch or its rollback has finished. Temporary copies left behind by a crash are deleted on the next run.
-- **Network access** goes to Anthropic only, and only for `cswitch usage`:
-  - `api.anthropic.com` to read usage
-  - `console.anthropic.com` to refresh expired tokens
+- **Network access** goes to Anthropic only, to the same endpoints Claude Code uses:
+  - `api.anthropic.com` to read usage, check which account a token belongs to, and, only when you run `cswitch reset` and confirm, use a limit reset
+  - `platform.claude.com` to refresh expired tokens
 - **No telemetry.** cswitch sends nothing anywhere else.
+- **Session mode** (`cswitch run`) gives each account its own Claude Code config directory under `~/.config/cswitch/sessions/`, with the account's credentials in that directory's keychain item (or a 0600 file on Linux), exactly as Claude Code stores them for `CLAUDE_CONFIG_DIR`.
 - **Backups** in `~/.config/cswitch/backups/` can contain copies of `~/.claude.json`, Desktop's `config.json`, and its cookies, all with mode 0600. Delete that folder if you no longer need it.
 
 Anyone who can run code as your macOS user can read all of this, just as they could read the apps' own storage. cswitch doesn't add a new trust boundary.

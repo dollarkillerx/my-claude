@@ -46,6 +46,7 @@ func newSandbox(t *testing.T) *sandbox {
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	t.Setenv("CSWITCH_HOME", filepath.Join(dir, "home"))
 	t.Setenv("CSWITCH_CLAUDE_JSON", filepath.Join(dir, "claude.json"))
+	t.Setenv("CSWITCH_CLAUDE_HOME", filepath.Join(dir, ".claude"))
 	t.Setenv("CSWITCH_DESKTOP_DIR", filepath.Join(dir, "desktop"))
 	t.Setenv("CSWITCH_CODE_KEYCHAIN_SERVICE", "cswitch-e2e-code-"+suffix)
 	t.Setenv("CSWITCH_KEYCHAIN_SERVICE", "cswitch-e2e-"+suffix)
@@ -402,5 +403,46 @@ func TestUsageLiveAccountByToken(t *testing.T) {
 	}
 	if got := liveToken(t); got != "dummy-new" {
 		t.Errorf("bob was not treated as the live account; Claude Code still has %s", got)
+	}
+}
+
+// A session's credentials live in a keychain item named after its directory;
+// a newer token there survives a rename and the item goes with the session.
+func TestSessionKeychainItemLifecycle(t *testing.T) {
+	s := newSandbox(t)
+	s.setup() // Claude Code is on bob
+	p, err := store.Load("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := sessionHome(p)
+	if err := prepareSession(p, home); err != nil {
+		t.Fatal(err)
+	}
+	c, err := home.ReadCredentials()
+	if err != nil || c.OAuth.AccessToken != "dummy-alice" {
+		t.Fatalf("session keychain item = %+v, %v", c, err)
+	}
+	newer, _ := claudecode.ParseCredentials(creds("alice2", time.Now().Add(3*time.Hour)))
+	if err := home.WriteCredentials(newer); err != nil {
+		t.Fatal(err)
+	}
+
+	s.mustRun("rename", "a", "a2")
+	if _, err := home.ReadCredentials(); err != claudecode.ErrNotLoggedIn {
+		t.Errorf("old session keychain item left behind: %v", err)
+	}
+	if raw, _ := store.Secret("a2", "code"); !strings.Contains(raw, "dummy-alice2") {
+		t.Error("session token lost in the rename")
+	}
+
+	p2, _ := store.Load("a2")
+	home2 := sessionHome(p2)
+	if err := prepareSession(p2, home2); err != nil {
+		t.Fatal(err)
+	}
+	s.mustRun("remove", "a2", "-y")
+	if _, err := home2.ReadCredentials(); err != claudecode.ErrNotLoggedIn {
+		t.Errorf("session keychain item left after remove: %v", err)
 	}
 }

@@ -93,7 +93,7 @@ cswitch login
 cswitch work
 ```
 
-`cswitch <名称>` 会同时切换两个应用，`--code-only` / `--desktop-only` 只切换其中一个。每次切换前都会先保存当前的登录状态。切换后请重启正在运行的 `claude` 会话；在重启前它们仍使用原来的账户。
+`cswitch <名称>` 会同时切换两个应用，`--code-only` / `--desktop-only` 只切换其中一个。每次切换前都会先保存当前的登录状态。正在运行的 `claude` 会话会在约 30 秒内用上新账户（Claude Code 会重新读取登录信息）；想立即生效可以重启它们。
 
 ### 设置语言
 
@@ -103,6 +103,48 @@ cswitch lang zh
 
 设置会被记住，之后每次运行都使用这个语言。`cswitch lang auto` 恢复为跟随系统。
 
+### 上限重置
+
+有些账户会获得**上限重置**：一次性免费补满每周额度或某个模型的额度（App 用量页面上的「免费重置」按钮）。
+
+```bash
+cswitch resets            # 查看每个账户的重置：剩几次、何时到期、现在能不能用
+cswitch reset work        # 使用一次（选 Claude Code 会优先用的那个），执行前会确认
+cswitch reset work <id>   # 使用指定的那个
+```
+
+用掉的重置无法退回，所以 cswitch 从不自动使用。`cswitch usage` 会提示哪些账户有可用的重置。
+
+### 自动切换
+
+```bash
+cswitch auto                          # 在当前终端监视
+cswitch auto --threshold 80           # 用到 80% 就切换（默认 90%）
+cswitch auto --weekly-threshold 97    # 每周额度可以用得更满一些
+cswitch auto --model Fable            # 同时关注 Fable 的每周额度
+cswitch auto --install                # 作为后台服务运行，登录后自动启动
+cswitch auto --status                 # 是否在运行、上次切换时间
+cswitch auto --uninstall              # 停止并移除后台服务
+```
+
+当前账户的会话或每周额度达到阈值时，cswitch 会把 Claude Code 切换到余量最多的账户。两次切换之间至少间隔 5 分钟；没有账户有余量时只记录日志。只切换 Claude Code，因为切换 Claude Desktop 需要重启它。后台服务在 macOS 上是 launchd LaunchAgent，在 Linux 上是 systemd 用户服务，日志写在 `~/.config/cswitch/auto.log`，大小保持在 2 MB 以内（之前的部分移到 `auto.log.1`）。`--once` 只检查一次（用于 cron），`--dry-run` 只记录会做什么。
+
+### 同时用多个账户，按目录绑定
+
+```bash
+cswitch run work                 # 只在当前终端以 "work" 启动 Claude Code
+cswitch run work --resume        # 名称后面的参数原样传给 claude
+cswitch map work ~/work          # 绑定目录（含所有子目录）
+cd ~/work/project && cswitch run # → 以 "work" 启动
+cswitch map                      # 列出绑定；cswitch unmap ~/work 解除
+```
+
+`cswitch run` 使用 Claude Code 自己的 `CLAUDE_CONFIG_DIR`：每个账户在 `~/.config/cswitch/sessions/` 下有一个会话目录，所以其他终端和全局登录都不受影响，可以多个账户并行工作。会话共享 `~/.claude` 的设置、CLAUDE.md、skills、插件和对话记录（所以 `--resume` 可以跨账户使用）。会话退出时，它自己刷新过的 token 会保存回账户；如果终端先被关掉了，下次 cswitch 用到这个账户时也会补存。会话运行期间，全局登录不会被切换到这个账户，因为同一个登录有两份副本会互相作废。在没有绑定的目录里，或者指定的就是当前的全局账户时，`cswitch run` 直接启动 `claude`。
+
+### 额度查询与频率限制
+
+额度接口本身有频率限制，所以查询结果会缓存：当前账户和快到上限的账户每分钟查一次，其他账户每 5 分钟查一次。遇到 429 时按服务器的 `Retry-After` 退避（没有给出时从 1 分钟逐步加长到 30 分钟），期间显示上一次的数据并标注是几分钟前的。`cswitch usage --refresh` 立即重新查询。
+
 ## 命令一览
 
 | 命令 | 说明 |
@@ -110,7 +152,12 @@ cswitch lang zh
 | `cswitch` | 列出所有账户及额度，选择一个切换 |
 | `cswitch <名称>` | 切换到指定账户（等同于 `cswitch use <名称>`） |
 | `cswitch login [名称]` | 不登出当前账户，登录另一个账户。`--desktop`、`--desktop-only` |
-| `cswitch usage [名称...]` | 查看额度。`--all` 同时显示内部条目 |
+| `cswitch usage [名称...]` | 查看额度。`--refresh` 立即查询，`--all` 同时显示内部条目 |
+| `cswitch resets [名称...]` | 查看上限重置 |
+| `cswitch reset <名称> [id]` | 使用一次上限重置（会确认；`-y` 跳过确认） |
+| `cswitch auto` | 快到上限时自动切换。`--install`、`--status`、`--uninstall`、`--once`、`--dry-run` |
+| `cswitch run [名称] [参数]` | 只在当前终端以指定账户启动 Claude Code |
+| `cswitch map [名称] [目录]` / `unmap [目录]` | 把目录绑定到账户（用于 `run`），列出或解除绑定 |
 | `cswitch list` | 列出已保存的账户（别名 `ls`） |
 | `cswitch current` | 显示两个应用当前分别使用哪个账户 |
 | `cswitch add [名称]` | 立即保存当前登录（一般用不到，切换时会自动保存） |
@@ -161,6 +208,10 @@ cswitch lang zh
 ├── profiles/<名称>/desktop/       # 该账户的 Desktop Cookie 和网页存储
 ├── backups/                       # cswitch 修改前的文件副本（每个文件保留最近 10 份）
 │   └── sessions-trash/            # 在某个账户中删除的 Desktop 会话
+├── sessions/<名称>/               # cswitch run：每个账户的 CLAUDE_CONFIG_DIR
+├── mappings.json                  # cswitch map：目录 → 账户
+├── usage-cache.json               # 最近的额度数据（频率控制）
+├── auto.log, auto-state.json      # cswitch auto：日志（及 auto.log.1）和上次切换时间
 └── sync-state.json                # 上次会话同步时的文件列表
 ```
 

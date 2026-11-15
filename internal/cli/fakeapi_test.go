@@ -20,15 +20,24 @@ type fakeAPI struct {
 	refreshTo string               // who a refreshed token belongs to
 	refreshes int
 	srv       *httptest.Server
+
+	usageHits     map[string]int // who -> usage requests
+	usageStatus   map[string]int // who -> HTTP status to answer usage with
+	claims        []map[string]string
+	claimPaths    []string
+	claimTokens   []string // Authorization of each claim
+	claimResponse string
 }
 
 func newFakeAPI(t *testing.T, owners map[string][2]string) *fakeAPI {
-	f := &fakeAPI{owners: owners, usage: map[string]string{}}
+	f := &fakeAPI{owners: owners, usage: map[string]string{}, usageHits: map[string]int{}, usageStatus: map[string]int{},
+		claimResponse: `{"result":"reset","resets_left":0}`}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	t.Setenv("CSWITCH_PROFILE_URL", f.srv.URL+"/profile")
 	t.Setenv("CSWITCH_USAGE_URL", f.srv.URL+"/usage")
 	t.Setenv("CSWITCH_TOKEN_URL", f.srv.URL+"/token")
+	t.Setenv("CSWITCH_API_URL", f.srv.URL)
 	resetLiveCache()
 	return f
 }
@@ -45,6 +54,15 @@ func (f *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"access_token": "dummy-" + who, "refresh_token": "dummy-r-" + who, "expires_in": 3600})
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/reset_rate_limits") {
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		f.claims = append(f.claims, body)
+		f.claimPaths = append(f.claimPaths, r.URL.Path)
+		f.claimTokens = append(f.claimTokens, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		fmt.Fprint(w, f.claimResponse)
+		return
+	}
 	who := strings.TrimPrefix(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), "dummy-")
 	owner, ok := f.owners[who]
 	if !ok {
@@ -59,6 +77,12 @@ func (f *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 			"organization": map[string]any{"uuid": "org-" + owner[0][:8], "name": who + "'s Organization", "organization_type": "claude_max"},
 		})
 	case "/usage":
+		f.usageHits[who]++
+		if st := f.usageStatus[who]; st != 0 {
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(st)
+			return
+		}
 		body := f.usage[who]
 		if body == "" {
 			body = `{"five_hour":{"utilization":10,"resets_at":"2030-01-01T00:00:00Z"},"limits":[{"kind":"session","group":"session","percent":10,"resets_at":"2030-01-01T00:00:00Z","is_active":true},{"kind":"weekly_all","group":"weekly","percent":20,"resets_at":"2030-01-05T00:00:00Z","is_active":true}]}`

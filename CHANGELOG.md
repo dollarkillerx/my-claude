@@ -4,7 +4,22 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Limit resets:** `cswitch resets` shows each account's resets: how many are left, when they expire, and whether they're usable now. `cswitch reset <name> [id]` uses one after a confirmation. Both use the same OAuth endpoints as Claude Code; cswitch never uses a reset on its own.
+- **Auto-switch:** `cswitch auto` switches Claude Code to the account with the most room when the active one nears a limit. It has session, weekly and per-model thresholds, a cooldown, `--once` and `--dry-run`, and `--install` / `--status` / `--uninstall` for a launchd or systemd background service.
+- **Session mode:** `cswitch run [name]` starts Claude Code as an account in one terminal through `CLAUDE_CONFIG_DIR`, sharing settings and history. `cswitch map` / `unmap` bind directories to accounts.
+- **Usage rate control:** readings are cached (1 min for active or near-limit accounts, 5 min otherwise), 429s back off, and `usage --refresh` fetches now.
+
+### Changed
+
+- Credential swaps and `~/.claude.json` writes hold Claude Code's own lock files, so they never interleave with a running claude's token refresh. Running sessions now pick up a switch on their own within about 30 seconds.
+- Tokens are refreshed at `platform.claude.com`, as Claude Code does.
+
 ### Fixed
+
+- The Japanese README had lost its command list.
+- Repairing a mislabeled login could race with parallel usage queries.
 
 - **`login` said "not logged in with a Claude subscription" when Claude Code's login had ended.** Claude Code blanks its tokens when a login ends; that now counts as logged out, and `login` goes ahead even if the current login can't be saved.
 - **The active account's token is no longer refreshed while `claude` runs.** Refreshing rotated the refresh token out from under running sessions, which then failed their own refresh and blanked Claude Code's login. (0.2.0 refreshed it regardless.)

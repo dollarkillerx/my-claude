@@ -20,6 +20,7 @@ func TestCodeSwitchWithFileBackend(t *testing.T) {
 	credFile := filepath.Join(dir, ".claude", ".credentials.json")
 	t.Setenv("CSWITCH_HOME", filepath.Join(dir, "home"))
 	t.Setenv("CSWITCH_CLAUDE_JSON", filepath.Join(dir, ".claude.json"))
+	t.Setenv("CSWITCH_CLAUDE_HOME", filepath.Join(dir, ".claude"))
 	t.Setenv("CSWITCH_CODE_CREDENTIALS_FILE", credFile)
 	t.Setenv("CSWITCH_KEY_FILE", filepath.Join(dir, "home", "master.key"))
 	t.Setenv("CSWITCH_DESKTOP_DIR", filepath.Join(dir, "no-desktop"))

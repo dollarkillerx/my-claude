@@ -59,7 +59,7 @@ func readLiveCode() (*liveCode, error) {
 	// profiles instead of being verified.
 	prof, err := profileOf(ctx, creds, !claudecode.Running(), func(c *claudecode.Credentials) error {
 		lc.creds = c
-		return claudecode.WriteCredentials(c)
+		return claudecode.Default.WithCredentialsLock(func() error { return claudecode.WriteCredentials(c) })
 	})
 	if errors.Is(err, usage.ErrRefreshRevoked) {
 		return nil, claudecode.ErrNotLoggedIn // the login has ended
@@ -158,16 +158,27 @@ func resetLiveCache() {
 // account it belongs to, or to a new profile, and removed from p. It returns
 // the error to show for p.
 func fixMislabeled(p *store.Profile, creds *claudecode.Credentials, owner *usage.Profile) error {
-	target, err := store.FindByAccount(owner.AccountUUID)
+	// Work on fresh copies: the cached profiles are shared with the other
+	// accounts' queries running in parallel.
+	found, err := store.FindByAccount(owner.AccountUUID)
 	if err != nil {
 		return err
 	}
-	if target == nil {
+	var target *store.Profile
+	if found != nil {
+		if target, err = store.Load(found.Name); err != nil {
+			return err
+		}
+	} else {
 		name, err := autoName(owner.Email, owner.AccountUUID)
 		if err != nil {
 			return err
 		}
 		target = &store.Profile{Name: name}
+	}
+	self, err := store.Load(p.Name)
+	if err != nil {
+		return err
 	}
 	if !target.HasCode {
 		if err := store.SetSecret(target.Name, "code", creds.Raw); err != nil {
@@ -184,13 +195,13 @@ func fixMislabeled(p *store.Profile, creds *claudecode.Credentials, owner *usage
 			return err
 		}
 	}
-	if err := store.DeleteSecret(p.Name, "code"); err != nil {
+	if err := store.DeleteSecret(self.Name, "code"); err != nil {
 		return err
 	}
-	p.HasCode = false
-	p.SubscriptionType = ""
-	if err := store.Save(p); err != nil {
+	self.HasCode = false
+	self.SubscriptionType = ""
+	if err := store.Save(self); err != nil {
 		return err
 	}
-	return i18n.E("err.code_login_mislabeled", p.Name, owner.Email, target.Name)
+	return i18n.E("err.code_login_mislabeled", self.Name, owner.Email, target.Name)
 }

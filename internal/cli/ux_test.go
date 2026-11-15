@@ -121,6 +121,7 @@ func TestPickWithoutTerminalPrintsTable(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CSWITCH_HOME", dir)
 	t.Setenv("CSWITCH_CLAUDE_JSON", filepath.Join(dir, "none.json"))
+	t.Setenv("CSWITCH_CLAUDE_HOME", filepath.Join(dir, ".claude"))
 	t.Setenv("CSWITCH_CODE_CREDENTIALS_FILE", filepath.Join(dir, "none-creds.json"))
 	t.Setenv("CSWITCH_KEY_FILE", filepath.Join(dir, "key"))
 	t.Setenv("CSWITCH_DESKTOP_DIR", filepath.Join(dir, "no-desktop"))

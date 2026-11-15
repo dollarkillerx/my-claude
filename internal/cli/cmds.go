@@ -73,7 +73,7 @@ func claimName(name, uuid string) (*store.Profile, error) {
 	} else if !errors.Is(err, store.ErrNoProfile) {
 		return nil, err
 	}
-	if err := store.Rename(other.Name, name); err != nil {
+	if err := store.WithOpLock(func() error { return renameProfile(other.Name, name) }); err != nil {
 		return nil, err
 	}
 	info(i18n.T("info.renamed", other.Name, name))
@@ -472,7 +472,7 @@ func switchByName(cmd *cobra.Command, name string, sw switchFlags) error {
 	if err != nil {
 		return err
 	}
-	return switchTo(p, sw)
+	return store.WithOpLock(func() error { return switchTo(p, sw) })
 }
 
 // switchTo switches Claude Code and/or Desktop to p.
@@ -496,6 +496,12 @@ func switchTo(p *store.Profile, sw switchFlags) error {
 			info(i18n.T("info.skip_desktop", p.Name))
 		}
 		doDesktop = false
+	}
+
+	// A running session (cswitch run) holds this account's token; a second
+	// copy in the global login would be rotated out from under one of them.
+	if doCode && sessionRunning(p) {
+		return i18n.E("err.session_running", p.Name)
 	}
 
 	// Run every check before changing anything, so a refusal never leaves one
@@ -566,7 +572,7 @@ func renameCmd() *cobra.Command {
 		Example: "  cswitch rename desktop-1a2b3c4d work",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := store.Rename(args[0], args[1]); err != nil {
+			if err := store.WithOpLock(func() error { return renameProfile(args[0], args[1]) }); err != nil {
 				return err
 			}
 			info(i18n.T("info.renamed", args[0], args[1]))
@@ -594,7 +600,13 @@ func removeCmd() *cobra.Command {
 					return i18n.E("err.aborted")
 				}
 			}
-			if err := store.Remove(p.Name); err != nil {
+			err = store.WithOpLock(func() error {
+				if err := dropSession(p, false); err != nil {
+					return err
+				}
+				return store.Remove(p.Name)
+			})
+			if err != nil {
 				return err
 			}
 			info(i18n.T("info.removed", p.Name))

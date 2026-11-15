@@ -50,7 +50,7 @@ func pick(ctx context.Context, sw switchFlags) error {
 	rows := [][]string{splitHeader(i18n.T("pick.header"))}
 	for i, p := range ps {
 		five, week := "-", "-"
-		if r, ok := reports[p.Name]; ok && r.err == nil && r.report != nil {
+		if r, ok := reports[p.Name]; ok && r.report != nil {
 			five, week = limitPct(r.report.Session()), limitPct(r.report.Weekly())
 		}
 		rows = append(rows, []string{strconv.Itoa(i + 1), p.Name, emailOrNote(p), orDash(p.SubscriptionType),
@@ -71,42 +71,39 @@ func pick(ctx context.Context, sw switchFlags) error {
 		if n < 1 || n > len(ps) {
 			return i18n.E("err.bad_choice", choice)
 		}
-		return switchTo(ps[n-1], sw)
+		return store.WithOpLock(func() error { return switchTo(ps[n-1], sw) })
 	}
 	for _, p := range ps {
 		if p.Name == choice {
-			return switchTo(p, sw)
+			return store.WithOpLock(func() error { return switchTo(p, sw) })
 		}
 	}
 	return i18n.E("err.bad_choice", choice)
 }
 
-type usageResult struct {
-	report *usage.Report
-	err    error
-}
-
-// fetchUsage queries usage for every profile in parallel, giving up after
-// timeout. It always waits for every query to finish before returning (an
-// expired context aborts their requests quickly), so no refresh can write
+// fetchUsage reads usage for every profile in parallel, giving up after
+// timeout; a reading may be a stale one from the cache (see readUsage). It
+// always waits for every query to finish before returning (an expired
+// context aborts their requests quickly), so no refresh can write
 // credentials after the caller has gone on to switch accounts.
-func fetchUsage(ctx context.Context, ps []*store.Profile, liveName string, timeout time.Duration) map[string]usageResult {
+func fetchUsage(ctx context.Context, ps []*store.Profile, liveName string, timeout time.Duration) map[string]reading {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	out := make(map[string]usageResult, len(ps))
+	out := make(map[string]reading, len(ps))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, p := range ps {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r, err := profileUsage(ctx, p, p.Name == liveName)
+			rd := readUsage(ctx, p, p.Name == liveName, false)
 			mu.Lock()
-			out[p.Name] = usageResult{r, err}
+			out[p.Name] = rd
 			mu.Unlock()
 		}()
 	}
 	wg.Wait()
+	saveUsageCache()
 	return out
 }
 

@@ -322,28 +322,32 @@ func applyCode(p *store.Profile) error {
 	if len(p.OAuthAccount) == 0 {
 		return i18n.E("err.no_oauth_account", p.Name)
 	}
-	prev, prevErr := claudecode.ReadCredentials()
-	if prevErr != nil && !errors.Is(prevErr, claudecode.ErrNotLoggedIn) {
-		// Without the previous credentials a failure below could not be undone.
-		return prevErr
-	}
-	if err := claudecode.WriteCredentials(creds); err != nil {
-		return err
-	}
-	resetLiveCache()
-	if err := claudecode.WriteAccount(p.OAuthAccount, store.BackupDir()); err != nil {
-		var rerr error
-		if prev != nil {
-			rerr = claudecode.WriteCredentials(prev)
-		} else {
-			rerr = claudecode.DeleteCredentials() // there was no login before
+	// Hold Claude Code's credential locks for the whole swap, so a running
+	// claude's token refresh can't interleave with it (see claudecode/locks.go).
+	return claudecode.Default.WithCredentialsLock(func() error {
+		prev, prevErr := claudecode.ReadCredentials()
+		if prevErr != nil && !errors.Is(prevErr, claudecode.ErrNotLoggedIn) {
+			// Without the previous credentials a failure below could not be undone.
+			return prevErr
 		}
-		if rerr != nil {
-			return i18n.E("err.rollback_failed", err, rerr)
+		if err := claudecode.WriteCredentials(creds); err != nil {
+			return err
 		}
-		return err
-	}
-	return nil
+		resetLiveCache()
+		if err := claudecode.WriteAccount(p.OAuthAccount, store.BackupDir()); err != nil {
+			var rerr error
+			if prev != nil {
+				rerr = claudecode.WriteCredentials(prev)
+			} else {
+				rerr = claudecode.DeleteCredentials() // there was no login before
+			}
+			if rerr != nil {
+				return i18n.E("err.rollback_failed", err, rerr)
+			}
+			return err
+		}
+		return nil
+	})
 }
 
 // applyDesktop makes p the live Desktop login. Desktop must not be running.

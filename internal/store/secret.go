@@ -38,6 +38,9 @@ func masterKey() ([]byte, error) {
 	keyMu.Lock()
 	defer keyMu.Unlock()
 	svc := keychainService()
+	if !useKeychain() {
+		svc = "file:" + keyFilePath() // cache per key file, not just per service
+	}
 	if keyCache != nil && keyCacheS == svc {
 		return keyCache, nil
 	}
@@ -49,13 +52,13 @@ func masterKey() ([]byte, error) {
 		keyCache, keyCacheS = k, svc
 		return k, nil
 	}
-	h, err := keychain.Get(svc, masterKeyAccount)
+	h, err := keychain.Get(keychainService(), masterKeyAccount)
 	if errors.Is(err, keychain.ErrNotFound) {
 		k := make([]byte, 32)
 		if _, err := rand.Read(k); err != nil {
 			return nil, err
 		}
-		if err := keychain.Set(svc, masterKeyAccount, hex.EncodeToString(k)); err != nil {
+		if err := keychain.Set(keychainService(), masterKeyAccount, hex.EncodeToString(k)); err != nil {
 			return nil, err
 		}
 		keyCache, keyCacheS = k, svc
@@ -66,7 +69,7 @@ func masterKey() ([]byte, error) {
 	}
 	k, err := hex.DecodeString(h)
 	if err != nil || len(k) != 32 {
-		return nil, fmt.Errorf("keychain item %s/%s is not a valid key", svc, masterKeyAccount)
+		return nil, fmt.Errorf("keychain item %s/%s is not a valid key", keychainService(), masterKeyAccount)
 	}
 	keyCache, keyCacheS = k, svc
 	return k, nil

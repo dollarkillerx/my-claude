@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dollarkillerx/my-claude/internal/fsutil"
@@ -113,13 +114,14 @@ func Load(name string) (*Profile, error) {
 // listCache memoizes List for the life of the process; commands look up
 // profiles by account several times, and only Save/Remove change the set.
 var (
+	listMu        sync.Mutex
 	listCache     []*Profile
 	listCacheHome string
 )
 
 // Save writes a profile's metadata.
 func Save(p *Profile) error {
-	listCache = nil
+	invalidateList()
 	if err := ValidateName(p.Name); err != nil {
 		return err
 	}
@@ -134,9 +136,18 @@ func Save(p *Profile) error {
 	return fsutil.AtomicWrite(metaPath(p.Name), append(data, '\n'), 0o600)
 }
 
+// invalidateList drops the cached profile list.
+func invalidateList() {
+	listMu.Lock()
+	listCache = nil
+	listMu.Unlock()
+}
+
 // List returns all profiles sorted by name. The result is cached until the
 // next Save or Remove; callers must not keep mutated profiles without saving.
 func List() ([]*Profile, error) {
+	listMu.Lock()
+	defer listMu.Unlock()
 	if listCache != nil && listCacheHome == Home() {
 		return listCache, nil
 	}
@@ -191,7 +202,7 @@ func Remove(name string) error {
 	if err := ValidateName(name); err != nil {
 		return err
 	}
-	listCache = nil
+	invalidateList()
 	// Profiles saved by early versions kept their secrets in keychain items.
 	for _, kind := range []string{"code", "desktop"} {
 		if !useKeychain() {
@@ -201,7 +212,11 @@ func Remove(name string) error {
 			return err
 		}
 	}
-	return os.RemoveAll(Dir(name))
+	if err := os.RemoveAll(Dir(name)); err != nil {
+		return err
+	}
+	renameMappings(name, "")
+	return nil
 }
 
 // Rename renames a profile. Its secrets are bound to the profile name, so
@@ -231,7 +246,7 @@ func Rename(oldName, newName string) error {
 		secrets[kind] = v
 	}
 
-	listCache = nil
+	invalidateList()
 	if err := os.Rename(Dir(oldName), Dir(newName)); err != nil {
 		return err
 	}
@@ -240,7 +255,7 @@ func Rename(oldName, newName string) error {
 	// for newName would otherwise be undecryptable under oldName.
 	undo := func(err error) error {
 		os.Rename(Dir(newName), Dir(oldName))
-		listCache = nil
+		invalidateList()
 		for kind, v := range secrets {
 			if rerr := SetSecret(oldName, kind, v); rerr != nil {
 				return i18n.E("err.rollback_failed", err, rerr)
@@ -262,5 +277,6 @@ func Rename(oldName, newName string) error {
 			keychain.Delete(keychainService(), oldName+"/"+kind)
 		}
 	}
+	renameMappings(oldName, newName)
 	return nil
 }

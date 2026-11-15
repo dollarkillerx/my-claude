@@ -18,7 +18,7 @@ import (
 )
 
 func usageCmd() *cobra.Command {
-	var all bool
+	var all, refresh bool
 	c := &cobra.Command{
 		Use:     "usage [name...]",
 		Short:   i18n.T("cmd.usage.short"),
@@ -54,35 +54,41 @@ func usageCmd() *cobra.Command {
 				liveName = st.owner.Name
 			}
 
-			reports := make([]*usage.Report, len(ps))
-			errs := make([]error, len(ps))
+			readings := make([]reading, len(ps))
 			var g errgroup.Group
 			g.SetLimit(4)
 			for i, p := range ps {
 				g.Go(func() error {
-					reports[i], errs[i] = profileUsage(cmd.Context(), p, p.Name == liveName)
+					readings[i] = readUsage(cmd.Context(), p, p.Name == liveName, refresh)
 					return nil
 				})
 			}
 			g.Wait()
+			saveUsageCache()
 
 			for i, p := range ps {
 				mark := " "
 				if p.Name == liveName {
 					mark = "*"
 				}
-				fmt.Printf("%s %s  %s  %s\n", mark, p.Name, orDash(p.Email), orDash(p.SubscriptionType))
-				switch {
-				case errs[i] != nil:
-					fmt.Printf("    %v\n", errs[i])
-				default:
-					printReport(reports[i], all)
+				rd := readings[i]
+				age := ""
+				if rd.report != nil && rd.age >= time.Minute {
+					age = "  " + i18n.T("usage.age", int(rd.age.Minutes()))
+				}
+				fmt.Printf("%s %s  %s  %s%s\n", mark, p.Name, orDash(p.Email), orDash(p.SubscriptionType), age)
+				if rd.err != nil {
+					fmt.Printf("    %v\n", rd.err)
+				}
+				if rd.report != nil {
+					printReport(rd.report, all)
 				}
 			}
 			return nil
 		},
 	}
 	c.Flags().BoolVar(&all, "all", false, i18n.T("flag.usage_all"))
+	c.Flags().BoolVar(&refresh, "refresh", false, i18n.T("flag.usage_refresh"))
 	return c
 }
 
@@ -111,6 +117,13 @@ func printReport(r *usage.Report, all bool) {
 	}
 	if len(rows) == 0 {
 		fmt.Println("    " + i18n.T("usage.no_limits"))
+	}
+	defer func() {
+		if n := r.Resets.Available(); n > 0 {
+			fmt.Println("    " + i18n.T("usage.resets_available", n))
+		}
+	}()
+	if len(rows) == 0 {
 		return
 	}
 	width := 0
@@ -150,34 +163,57 @@ func knownWindow(name string) bool {
 	return false
 }
 
-// profileUsage fetches usage for p, refreshing its token when needed.
-//
-// The active account's token is read from Claude Code's own credentials
-// (Claude Code may have rotated it since it was saved). It is only refreshed
-// when no claude process is running: a refresh replaces the refresh token,
-// and a running session still holding the old one fails its next refresh and
-// then blanks Claude Code's login. A running claude keeps the token fresh by
-// itself anyway. A saved login whose refresh token the server rejects has
-// ended; it is removed so the account can simply be logged in again.
-func profileUsage(ctx context.Context, p *store.Profile, live bool) (*usage.Report, error) {
-	if !p.HasCode {
-		return nil, i18n.E("err.usage_needs_code")
-	}
-	var creds *claudecode.Credentials
-	var err error
+// loginOf returns the credentials p's requests go out with: Claude Code's
+// own for the active account (Claude Code may have rotated it since it was
+// saved), a running session's (inSession), or the saved ones, after taking
+// over a newer login a session left behind.
+func loginOf(p *store.Profile, live bool) (creds *claudecode.Credentials, inSession bool, err error) {
 	if live {
 		creds, err = claudecode.ReadCredentials()
-	} else {
-		var raw string
-		if raw, err = store.Secret(p.Name, "code"); err == nil {
-			creds, err = claudecode.ParseCredentials(raw)
-		}
+		return creds, false, err
 	}
+	if sessionRunning(p) {
+		// A running session holds this account's current token and refreshes
+		// it itself; use it, never refresh it.
+		creds, err = sessionHome(p).ReadCredentials()
+		return creds, true, err
+	}
+	adopted, err := adoptSessionLogin(p, sessionHome(p))
+	if err != nil {
+		return nil, false, err
+	}
+	if !p.HasCode && !adopted {
+		return nil, false, i18n.E("err.usage_needs_code")
+	}
+	raw, err := store.Secret(p.Name, "code")
+	if err != nil {
+		return nil, false, err
+	}
+	creds, err = claudecode.ParseCredentials(raw)
+	return creds, false, err
+}
+
+// fetchUsageRaw fetches usage for p, refreshing its token when needed.
+//
+// The active account's token is only refreshed when no claude process is
+// running: a refresh replaces the refresh token, and a running session still
+// holding the old one fails its next refresh and then blanks Claude Code's
+// login. A running claude keeps the token fresh by itself anyway. A saved
+// login whose refresh token the server rejects has ended; it is removed so
+// the account can simply be logged in again.
+func fetchUsageRaw(ctx context.Context, p *store.Profile, live bool) ([]byte, error) {
+	if live && !p.HasCode {
+		return nil, i18n.E("err.usage_needs_code")
+	}
+	creds, inSession, err := loginOf(p, live)
 	if err != nil {
 		return nil, err
 	}
 
 	refresh := func() error {
+		if inSession {
+			return i18n.E("err.session_token_expired", p.Name)
+		}
 		if live && claudecode.Running() {
 			return i18n.E("err.live_token_expired_running")
 		}
@@ -198,7 +234,7 @@ func profileUsage(ctx context.Context, p *store.Profile, live bool) (*usage.Repo
 			return err
 		}
 		if live {
-			return claudecode.WriteCredentials(creds)
+			return claudecode.Default.WithCredentialsLock(func() error { return claudecode.WriteCredentials(creds) })
 		}
 		return nil
 	}
@@ -210,14 +246,14 @@ func profileUsage(ctx context.Context, p *store.Profile, live bool) (*usage.Repo
 		}
 		refreshed = true
 	}
-	r, err := usage.Fetch(ctx, creds.OAuth.AccessToken)
+	r, err := usage.FetchRaw(ctx, creds.OAuth.AccessToken)
 	if usage.IsUnauthorized(err) && !refreshed {
 		if rerr := refresh(); rerr != nil {
 			return nil, rerr
 		}
-		r, err = usage.Fetch(ctx, creds.OAuth.AccessToken)
+		r, err = usage.FetchRaw(ctx, creds.OAuth.AccessToken)
 	}
-	if err != nil || live {
+	if err != nil || live || inSession {
 		return r, err // the live login's owner was verified by identifyCode
 	}
 	// Make sure the saved token is this profile's account: earlier versions
@@ -239,15 +275,19 @@ var profileFixMu sync.Mutex
 func dropDeadCode(p *store.Profile) error {
 	profileFixMu.Lock()
 	defer profileFixMu.Unlock()
-	if err := store.DeleteSecret(p.Name, "code"); err != nil {
+	self, err := store.Load(p.Name) // a fresh copy; the cached one is shared
+	if err != nil {
 		return err
 	}
-	p.HasCode = false
-	p.SubscriptionType = ""
-	if err := store.Save(p); err != nil {
+	if err := store.DeleteSecret(self.Name, "code"); err != nil {
 		return err
 	}
-	return i18n.E("err.code_login_expired", p.Name)
+	self.HasCode = false
+	self.SubscriptionType = ""
+	if err := store.Save(self); err != nil {
+		return err
+	}
+	return i18n.E("err.code_login_expired", self.Name)
 }
 
 func windowLabel(name string) string {
