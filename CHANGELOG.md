@@ -4,12 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-15
+
 ### Added
 
 - **Limit resets:** `cswitch resets` shows each account's resets: how many are left, when they expire, and whether they're usable now. `cswitch reset <name> [id]` uses one after a confirmation. Both use the same OAuth endpoints as Claude Code; cswitch never uses a reset on its own.
 - **Auto-switch:** `cswitch auto` switches Claude Code to the account with the most room when the active one nears a limit. It has session, weekly and per-model thresholds, a cooldown, `--once` and `--dry-run`, and `--install` / `--status` / `--uninstall` for a launchd or systemd background service.
-- **Session mode:** `cswitch run [name]` starts Claude Code as an account in one terminal through `CLAUDE_CONFIG_DIR`, sharing settings and history. `cswitch map` / `unmap` bind directories to accounts.
-- **Usage rate control:** readings are cached (1 min for active or near-limit accounts, 5 min otherwise), 429s back off, and `usage --refresh` fetches now.
+- **Session mode:** `cswitch run [name]` starts Claude Code as an account in one terminal through `CLAUDE_CONFIG_DIR`, sharing settings and history. `cswitch map` / `unmap` bind directories to accounts. A token the session refreshed is kept even when its terminal was closed.
+- **Usage rate control:** readings are cached (1 min for active or near-limit accounts, 5 min otherwise), 429s back off, and `usage --refresh` fetches now. The cache is shared safely between the auto-switcher and other commands.
 
 ### Changed
 
@@ -20,7 +22,6 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - The Japanese README had lost its command list.
 - Repairing a mislabeled login could race with parallel usage queries.
-
 - **`login` said "not logged in with a Claude subscription" when Claude Code's login had ended.** Claude Code blanks its tokens when a login ends; that now counts as logged out, and `login` goes ahead even if the current login can't be saved.
 - **The active account's token is no longer refreshed while `claude` runs.** Refreshing rotated the refresh token out from under running sessions, which then failed their own refresh and blanked Claude Code's login. (0.2.0 refreshed it regardless.)
 - **A saved login the server no longer accepts** is removed with a message to log in again, instead of showing HTTP 400 on every run.
@@ -72,5 +73,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - Profile secrets are encrypted with AES-256-GCM into files, with only the key in the keychain, so logins of any size can be saved.
 - Ctrl-C during a Desktop switch is deferred until the switch or its rollback finishes, and leftover temporary copies are cleaned up.
 
+[0.3.0]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.3.0
 [0.2.0]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.1.0
