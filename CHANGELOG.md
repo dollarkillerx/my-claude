@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-16
+
 ### Changed
 
 - **Auto-switch:** `--weekly-threshold` now defaults to 99%, so an account counts as out of weekly room only when that window (or a `--model` weekly limit) is all but used up. It used to follow `--threshold` (90%).
@@ -84,6 +86,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Profile secrets are encrypted with AES-256-GCM into files, with only the key in the keychain, so logins of any size can be saved.
 - Ctrl-C during a Desktop switch is deferred until the switch or its rollback finishes, and leftover temporary copies are cleaned up.
 
+[0.3.1]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.3.1
 [0.3.0]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.3.0
 [0.2.0]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dollarkillerx/my-claude/releases/tag/v0.1.0
