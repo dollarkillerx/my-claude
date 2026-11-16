@@ -161,9 +161,11 @@ Claude Code reads an account's limit-reset status from the usage endpoint with `
 
 Alongside these, `next_grant_id` names the grant Claude Code would use next, and `cooldown_until` blocks claims until then. A claim is `POST https://api.anthropic.com/api/organizations/{org}/reset_rate_limits` with `{"program": "cedar_ember", "grant_id": …, "request_id": …}` and the account's OAuth token. `request_id` is random, so a retried request isn't counted twice. The answer's `result` is one of `reset`, `already_used`, `not_limited`, `cooldown`, `ineligible` or `unavailable`. cswitch only claims when you run `cswitch reset` and confirm.
 
+When the block says `eligible: false`, `ineligible_reason` says why (`tier`, `tenure`, `surface`, `mobile`, `cli_version`, `not_at_wall`, `extra_usage`, …), and `cswitch resets` explains the known ones. `surface` means the server offers resets only to Claude Code itself, so cswitch has nothing to list or claim; cswitch doesn't pretend to be Claude Code to get around that.
+
 ## Auto-switch
 
-Each check (every minute by default) reads usage through the cache below. The active account is "over" when its session usage reaches `--threshold`, or its weekly usage (and any `--model` weekly limits) reaches `--weekly-threshold`. Then Claude Code is switched to the account with the lowest such ratio that is under both lines. These are skipped:
+Each check (every minute by default) reads usage through the cache below. The active account is "over" when its session usage reaches `--threshold`, or its weekly usage (and any `--model` weekly limits) reaches `--weekly-threshold` (default 99%, so a weekly window is all but used up before switching). Then Claude Code is switched to the account with the lowest such ratio that is under both lines. These are skipped:
 
 - accounts without a Claude Code login;
 - accounts with a running `cswitch run` session;
@@ -177,8 +179,8 @@ Usage is read without a lock. Then the check takes cswitch's own lock (`~/.confi
 
 `usage-cache.json` keeps each account's last usage response:
 
-- **Reuse:** a reading is reused for 1 minute for the active account or one at ≥ 80% of any limit, and for 5 minutes for the others.
-- **Rate limits:** a 429 sets a backoff of the server's `Retry-After`, or 1, 2, 4 … up to 30 minutes. During the backoff nothing is fetched for that account, and the last reading is shown with its age.
+- **Reuse:** a reading is reused for 1 minute for an account in use (Claude Code's, or one with a running session), and for 5 minutes for the others. An account that isn't in use only changes when it's used elsewhere, so polling it every minute, even at a limit, would only run into the endpoint's rate limit.
+- **Rate limits:** a 429 sets a backoff of the server's `Retry-After`, or 1, 2, 4 … up to 30 minutes. During the backoff nothing is fetched for that account, and the last reading is shown with its age. The rate limit itself is reported only when that reading is more than 15 minutes old, or when `usage --refresh` or `reset` asked for a fresh one.
 
 The dashboard, the picker, `usage`, `resets` and `auto` all go through it; `usage --refresh` and `reset` skip the freshness check, but never the backoff.
 

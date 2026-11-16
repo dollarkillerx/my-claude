@@ -19,14 +19,18 @@ import (
 // `usage` and the auto-switcher do not keep hitting the usage endpoint, which
 // is itself rate limited:
 //
-//   - a reading is reused for pollActive (the account in use, or one near a
-//     limit, whose numbers matter now) or pollIdle (every other account);
+//   - a reading is reused for pollActive for an account in use (Claude
+//     Code's, or one with a running session), whose numbers move now, and
+//     for pollIdle for every other one, whose numbers only move when it is
+//     used elsewhere;
 //   - a 429 backs off for the server's Retry-After, or 1, 2, 4 … up to 30
 //     minutes, during which the last reading is shown, marked with its age.
+//     The rate limit itself is only reported once that reading is older
+//     than quietAge, or when a fetch was asked for (force).
 const (
 	pollActive  = 1 * time.Minute
 	pollIdle    = 5 * time.Minute
-	nearLimit   = 80.0
+	quietAge    = 15 * time.Minute
 	backoffBase = 1 * time.Minute
 	backoffMax  = 30 * time.Minute
 )
@@ -158,30 +162,11 @@ func cacheKey(p *store.Profile) string {
 }
 
 // pollInterval is how long a reading stays good enough to reuse.
-func pollInterval(r *usage.Report, active bool) time.Duration {
-	if active || maxPercent(r) >= nearLimit {
+func pollInterval(active bool) time.Duration {
+	if active {
 		return pollActive
 	}
 	return pollIdle
-}
-
-// maxPercent is the highest utilization across an account's limits.
-func maxPercent(r *usage.Report) float64 {
-	if r == nil {
-		return 0
-	}
-	m := 0.0
-	for _, l := range r.Limits {
-		m = max(m, l.Percent)
-	}
-	if len(r.Limits) == 0 {
-		for _, w := range r.Windows {
-			if knownWindow(w.Name) {
-				m = max(m, w.Utilization)
-			}
-		}
-	}
-	return m
 }
 
 // reading is one account's usage as far as it is known: report may be a
@@ -198,6 +183,7 @@ type reading struct {
 func readUsage(ctx context.Context, p *store.Profile, live, force bool) reading {
 	key := cacheKey(p)
 	now := time.Now()
+	active := live || sessionRunning(p)
 
 	cacheMu.Lock()
 	e := cacheLocked()[key]
@@ -207,13 +193,13 @@ func readUsage(ctx context.Context, p *store.Profile, live, force bool) reading 
 		cached, _ = usage.Parse(e.Body)
 		age = now.Sub(e.FetchedAt)
 	}
-	if e != nil && now.Before(e.BackoffUntil) {
-		cacheMu.Unlock()
-		return reading{cached, age, i18n.E("err.usage_rate_limited", int(e.BackoffUntil.Sub(now).Minutes())+1)}
-	}
-	if !force && cached != nil && age < pollInterval(cached, live) {
+	if !force && cached != nil && age < pollInterval(active) {
 		cacheMu.Unlock()
 		return reading{cached, age, nil}
+	}
+	if e != nil && now.Before(e.BackoffUntil) {
+		cacheMu.Unlock()
+		return rateLimited(cached, age, e.BackoffUntil.Sub(now), force)
 	}
 	cacheMu.Unlock()
 
@@ -244,9 +230,20 @@ func readUsage(ctx context.Context, p *store.Profile, live, force bool) reading 
 		}
 		e.BackoffUntil = now.Add(wait)
 		setCacheEntry(key, e)
-		return reading{cached, age, i18n.E("err.usage_rate_limited", int(wait.Minutes())+1)}
+		return rateLimited(cached, age, wait, force)
 	}
 	return reading{cached, age, err}
+}
+
+// rateLimited is the reading while the endpoint backs off for wait: a recent
+// enough cached reading stands on its own (it is shown with its age), and
+// the rate limit is reported when there is none, or when it is old, or when
+// the caller asked for a fresh one.
+func rateLimited(cached *usage.Report, age, wait time.Duration, force bool) reading {
+	if cached != nil && age < quietAge && !force {
+		return reading{cached, age, nil}
+	}
+	return reading{cached, age, i18n.E("err.usage_rate_limited", int(wait.Minutes())+1)}
 }
 
 // profileUsage is readUsage without a stale fallback, for callers that only

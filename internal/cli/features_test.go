@@ -88,11 +88,56 @@ func TestUsageCachePolicy(t *testing.T) {
 	}
 }
 
+func TestIneligibleText(t *testing.T) {
+	if got := ineligibleText("surface"); !strings.Contains(got, "Claude Code") || !strings.HasSuffix(got, "(surface)") {
+		t.Errorf("surface: %q", got)
+	}
+	if got := ineligibleText("something_new"); got != "something_new" {
+		t.Errorf("unknown reason: %q", got)
+	}
+	if got := ineligibleText(""); got != orDash("") {
+		t.Errorf("empty reason: %q", got)
+	}
+}
+
 func TestPollInterval(t *testing.T) {
-	idle, _ := usage.Parse([]byte(usageBody(10, 20, "")))
-	near, _ := usage.Parse([]byte(usageBody(85, 20, "")))
-	if pollInterval(idle, false) != pollIdle || pollInterval(idle, true) != pollActive || pollInterval(near, false) != pollActive {
+	if pollInterval(false) != pollIdle || pollInterval(true) != pollActive {
 		t.Error("poll intervals wrong")
+	}
+}
+
+// An account near or at a limit that is not in use is not polled every
+// minute, and a 429 with a recent reading is not reported.
+func TestRateLimitQuiet(t *testing.T) {
+	_, _, api := twoAccounts(t, "")
+	api.usage["beta"] = usageBody(100, 20, "")
+	p, _ := store.Load("beta")
+	readUsage(t.Context(), p, false, false)
+
+	age := func(d time.Duration) {
+		cacheMu.Lock()
+		cacheLocked()[cacheKey(p)].FetchedAt = time.Now().Add(-d)
+		cacheMu.Unlock()
+	}
+	age(2 * time.Minute)
+	if readUsage(t.Context(), p, false, false); api.usageHits["beta"] != 1 {
+		t.Errorf("idle account at its limit refetched after 2 min: %d", api.usageHits["beta"])
+	}
+
+	api.usageStatus["beta"] = 429
+	age(6 * time.Minute)
+	if rd := readUsage(t.Context(), p, false, false); rd.err != nil || rd.report == nil {
+		t.Errorf("429 with a 6-min-old reading should stay quiet: %+v", rd)
+	}
+	if rd := readUsage(t.Context(), p, false, false); rd.err != nil || rd.report == nil {
+		t.Errorf("backoff with a recent reading should stay quiet: %+v", rd)
+	}
+	if rd := readUsage(t.Context(), p, false, true); rd.err == nil {
+		t.Error("an asked-for refresh must say it was rate limited")
+	}
+	age(20 * time.Minute)
+	if rd := readUsage(t.Context(), p, false, false); rd.err == nil || rd.report == nil {
+		t.Errorf("an old reading must come with the rate limit: %+v", rd)
 	}
 }
 
@@ -207,6 +252,24 @@ func TestPressure(t *testing.T) {
 	}
 	if pressure(nil, o) < 1 {
 		t.Error("unknown usage must not look free")
+	}
+}
+
+func TestWeeklyThresholdDefault(t *testing.T) {
+	c := autoCmd()
+	if v, _ := c.Flags().GetFloat64("weekly-threshold"); v != 99 {
+		t.Fatalf("weekly default = %v, want 99", v)
+	}
+	o := autoOptions{Threshold: 90, WeeklyThreshold: 99}
+	at := func(pct int) *usage.Report {
+		r, _ := usage.Parse([]byte(fmt.Sprintf(`{"limits":[{"kind":"session","percent":10},{"kind":"weekly_all","percent":%d}]}`, pct)))
+		return r
+	}
+	if p := pressure(at(91), o); p >= 1 {
+		t.Errorf("91%% weekly must still be usable: %v", p)
+	}
+	if p := pressure(at(99), o); p < 1 {
+		t.Errorf("99%% weekly must count as used up: %v", p)
 	}
 }
 

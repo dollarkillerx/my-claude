@@ -120,7 +120,7 @@ cswitch reset work <id>   # 指定したものを使う
 ```bash
 cswitch auto                          # このターミナルで監視
 cswitch auto --threshold 80           # 80% で切り替え（既定 90%）
-cswitch auto --weekly-threshold 97    # 週間の使用量はもう少し使い切る
+cswitch auto --weekly-threshold 95    # 週間は 95% で切り替え（既定 99%）
 cswitch auto --model Fable            # Fable の週間上限も考慮
 cswitch auto --install                # バックグラウンドで実行（ログイン時に起動）
 cswitch auto --status                 # 実行中か、最後の切り替え
@@ -143,7 +143,7 @@ cswitch map                      # 割り当て一覧。cswitch unmap ~/work で
 
 ### 使用量の取得とレート制限
 
-使用量エンドポイント自体にレート制限があるため、取得結果はキャッシュされます。使用中のアカウントと上限に近いアカウントは 1 分ごと、その他は 5 分ごとに取得します。429 が返ったときはサーバーの `Retry-After`（なければ 1 分から最大 30 分まで段階的に延長）だけ待ち、その間は前回のデータを何分前のものか付けて表示します。`cswitch usage --refresh` で今すぐ取得します。
+使用量エンドポイント自体にレート制限があるため、取得結果はキャッシュされます。使用中のアカウント（Claude Code のアカウント、または `cswitch run` のセッションが動いているアカウント）は 1 分ごと、その他は 5 分ごとに取得します。429 が返ったときはサーバーの `Retry-After`（なければ 1 分から最大 30 分まで段階的に延長）だけ待ち、その間は前回のデータを何分前のものか付けて表示します。レート制限の表示は、そのデータが 15 分より古くなったときだけです。`cswitch usage --refresh` で今すぐ取得します。
 
 ## コマンド一覧
 

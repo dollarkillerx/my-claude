@@ -120,7 +120,7 @@ cswitch reset work <id>   # 使用指定的那个
 ```bash
 cswitch auto                          # 在当前终端监视
 cswitch auto --threshold 80           # 用到 80% 就切换（默认 90%）
-cswitch auto --weekly-threshold 97    # 每周额度可以用得更满一些
+cswitch auto --weekly-threshold 95    # 每周额度用到 95% 就切换（默认 99%）
 cswitch auto --model Fable            # 同时关注 Fable 的每周额度
 cswitch auto --install                # 作为后台服务运行，登录后自动启动
 cswitch auto --status                 # 是否在运行、上次切换时间
@@ -143,7 +143,7 @@ cswitch map                      # 列出绑定；cswitch unmap ~/work 解除
 
 ### 额度查询与频率限制
 
-额度接口本身有频率限制，所以查询结果会缓存：当前账户和快到上限的账户每分钟查一次，其他账户每 5 分钟查一次。遇到 429 时按服务器的 `Retry-After` 退避（没有给出时从 1 分钟逐步加长到 30 分钟），期间显示上一次的数据并标注是几分钟前的。`cswitch usage --refresh` 立即重新查询。
+额度接口本身有频率限制，所以查询结果会缓存：正在使用的账户（Claude Code 当前账户，或有 `cswitch run` 会话在运行的账户）每分钟查一次，其他账户每 5 分钟查一次。遇到 429 时按服务器的 `Retry-After` 退避（没有给出时从 1 分钟逐步加长到 30 分钟），期间显示上一次的数据并标注是几分钟前的；只有那份数据超过 15 分钟时才提示限流。`cswitch usage --refresh` 立即重新查询。
 
 ## 命令一览
 

@@ -64,10 +64,20 @@ func resetsCmd() *cobra.Command {
 	}
 }
 
+// ineligibleText explains the server's reason code where it is known, and
+// keeps the code itself either way.
+func ineligibleText(reason string) string {
+	key := "resets.why." + reason
+	if reason == "" || i18n.T(key) == key {
+		return orDash(reason)
+	}
+	return i18n.T(key) + " (" + reason + ")"
+}
+
 // printResets lists an account's grants.
 func printResets(r *usage.Resets) {
 	if !r.Eligible {
-		fmt.Println("    " + i18n.T("resets.ineligible", orDash(r.IneligibleReason)))
+		fmt.Println("    " + i18n.T("resets.ineligible", ineligibleText(r.IneligibleReason)))
 		return
 	}
 	if len(r.Grants) == 0 {

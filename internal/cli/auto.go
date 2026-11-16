@@ -58,13 +58,10 @@ func autoCmd() *cobra.Command {
 		Use:   "auto",
 		Short: i18n.T("cmd.auto.short"),
 		Long:  i18n.T("cmd.auto.long"),
-		Example: "  cswitch auto\n  cswitch auto --threshold 80 --weekly-threshold 97\n" +
+		Example: "  cswitch auto\n  cswitch auto --threshold 80 --weekly-threshold 95\n" +
 			"  cswitch auto --install\n  cswitch auto --status\n  cswitch auto --uninstall",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if o.WeeklyThreshold == 0 {
-				o.WeeklyThreshold = o.Threshold
-			}
 			if o.Threshold < 50 || o.Threshold > 100 || o.WeeklyThreshold < 50 || o.WeeklyThreshold > 100 {
 				return i18n.E("err.auto_bad_threshold")
 			}
@@ -101,7 +98,7 @@ func autoCmd() *cobra.Command {
 		},
 	}
 	c.Flags().Float64Var(&o.Threshold, "threshold", 90, i18n.T("flag.auto_threshold"))
-	c.Flags().Float64Var(&o.WeeklyThreshold, "weekly-threshold", 0, i18n.T("flag.auto_weekly_threshold"))
+	c.Flags().Float64Var(&o.WeeklyThreshold, "weekly-threshold", 99, i18n.T("flag.auto_weekly_threshold"))
 	c.Flags().StringVar(&models, "model", "", i18n.T("flag.auto_model"))
 	c.Flags().DurationVar(&o.Interval, "interval", time.Minute, i18n.T("flag.auto_interval"))
 	c.Flags().DurationVar(&o.Cooldown, "cooldown", 5*time.Minute, i18n.T("flag.auto_cooldown"))

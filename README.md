@@ -117,7 +117,7 @@ A used reset can't be given back, so cswitch never uses one on its own. `cswitch
 ```bash
 cswitch auto                          # watch in this terminal
 cswitch auto --threshold 80           # switch away at 80% (default 90%)
-cswitch auto --weekly-threshold 97    # let the weekly window run higher
+cswitch auto --weekly-threshold 95    # weekly: switch at 95% (default 99%)
 cswitch auto --model Fable            # also count the Fable weekly limit
 cswitch auto --install                # run in the background, started at login
 cswitch auto --status                 # is it running? last switch?
@@ -140,7 +140,7 @@ cswitch map                      # list bindings; cswitch unmap ~/work removes o
 
 ### Usage readings and rate limits
 
-The usage endpoint is itself rate limited, so readings are cached: the active account, and any account near a limit, every minute; the others every 5 minutes. A 429 backs off for the server's `Retry-After` (or 1 → 30 minutes); meanwhile the last reading is shown with its age. `cswitch usage --refresh` fetches now.
+The usage endpoint is itself rate limited, so readings are cached: accounts in use (Claude Code's, or one with a running `cswitch run` session) every minute; the others every 5 minutes. A 429 backs off for the server's `Retry-After` (or 1 → 30 minutes); meanwhile the last reading is shown with its age, and the rate limit is only mentioned once that reading is more than 15 minutes old. `cswitch usage --refresh` fetches now.
 
 ## Commands
 
