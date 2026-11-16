@@ -113,7 +113,7 @@ cswitch reset work        # 1 回使う（Claude Code が次に使うもの）�
 cswitch reset work <id>   # 指定したものを使う
 ```
 
-使ったリセットは戻せないため、cswitch が自動で使うことはありません。`cswitch usage` は、リセットが使えるアカウントを表示します。
+使ったリセットは戻せないため、cswitch が自動で使うことはありません。`cswitch usage` は、リセットが使えるアカウントを表示します。サーバーが Claude Code が古いと答えたとき（`cli_version`）は、`resets` と `reset` が `claude update` を実行してから再確認します。`--no-update` で無効にできます。
 
 ### 自動切り替え
 

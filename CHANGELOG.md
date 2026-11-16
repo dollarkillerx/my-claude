@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - **Auto-switch:** `--weekly-threshold` now defaults to 99%, so an account counts as out of weekly room only when that window (or a `--model` weekly limit) is all but used up. It used to follow `--threshold` (90%).
 - **Resets:** `cswitch resets` explains the server's reason when an account isn't eligible. `surface` means the server offers resets only inside Claude Code, so cswitch can't list or use them; use one from Claude Code's prompt at a limit.
+- **Resets:** when the reason is `cli_version` (Claude Code too old), `resets` and `reset` run `claude update` and read the status again. `--no-update` turns this off. `reset` on an ineligible account now says why instead of "no resets".
 - **Usage cache:** an account that isn't in use is read every 5 minutes, even near a limit (it was every minute at 80% or more, which ran into the usage endpoint's rate limit). An account with a running `cswitch run` session counts as in use.
 
 ### Fixed

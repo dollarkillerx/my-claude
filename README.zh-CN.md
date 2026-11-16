@@ -113,7 +113,7 @@ cswitch reset work        # 使用一次（选 Claude Code 会优先用的那个
 cswitch reset work <id>   # 使用指定的那个
 ```
 
-用掉的重置无法退回，所以 cswitch 从不自动使用。`cswitch usage` 会提示哪些账户有可用的重置。
+用掉的重置无法退回，所以 cswitch 从不自动使用。`cswitch usage` 会提示哪些账户有可用的重置。服务器表示 Claude Code 版本太旧（`cli_version`）时，`resets` 和 `reset` 会自动运行 `claude update` 再查一次；加 `--no-update` 可关闭。
 
 ### 自动切换
 

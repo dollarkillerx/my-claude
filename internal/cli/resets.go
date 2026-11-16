@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,8 @@ import (
 // uses; see usage/resets.go. Using one is never automatic.
 
 func resetsCmd() *cobra.Command {
-	return &cobra.Command{
+	var noUpdate bool
+	c := &cobra.Command{
 		Use:     "resets [name...]",
 		Short:   i18n.T("cmd.resets.short"),
 		Example: "  cswitch resets\n  cswitch reset alex",
@@ -46,6 +48,18 @@ func resetsCmd() *cobra.Command {
 			}
 			g.Wait()
 			saveUsageCache()
+			if !noUpdate && slices.ContainsFunc(readings, func(rd reading) bool { return needsClaudeUpdate(rd.report) }) {
+				if err := updateClaudeCode(cmd.Context()); err != nil {
+					warn(err.Error())
+				} else {
+					for i, p := range ps {
+						if needsClaudeUpdate(readings[i].report) {
+							readings[i] = readUsage(cmd.Context(), p, p.Name == liveName, true)
+						}
+					}
+					saveUsageCache()
+				}
+			}
 
 			for i, p := range ps {
 				fmt.Printf("%s  %s\n", p.Name, emailOrNote(p))
@@ -62,6 +76,8 @@ func resetsCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&noUpdate, "no-update", false, i18n.T("flag.no_claude_update"))
+	return c
 }
 
 // ineligibleText explains the server's reason code where it is known, and
@@ -140,7 +156,7 @@ func formatExpiry(t time.Time) string {
 }
 
 func resetCmd() *cobra.Command {
-	var yes bool
+	var yes, noUpdate bool
 	c := &cobra.Command{
 		Use:     "reset <name> [grant-id]",
 		Short:   i18n.T("cmd.reset.short"),
@@ -156,11 +172,21 @@ func resetCmd() *cobra.Command {
 			// Use the current status, not a cached one: a claim is irreversible.
 			rd := readUsage(cmd.Context(), p, live, true)
 			saveUsageCache()
+			if !noUpdate && needsClaudeUpdate(rd.report) {
+				if err := updateClaudeCode(cmd.Context()); err != nil {
+					return err
+				}
+				rd = readUsage(cmd.Context(), p, live, true)
+				saveUsageCache()
+			}
 			if rd.report == nil {
 				return rd.err
 			}
 			r := rd.report.Resets
-			if r == nil || !r.Eligible || len(r.Grants) == 0 {
+			if r != nil && !r.Eligible {
+				return i18n.E("err.reset_ineligible", p.Name, ineligibleText(r.IneligibleReason))
+			}
+			if r == nil || len(r.Grants) == 0 {
 				return i18n.E("err.reset_none", p.Name)
 			}
 			id := r.NextGrantID
@@ -207,10 +233,17 @@ func resetCmd() *cobra.Command {
 				info(i18n.T("info.reset_done", grantLabel(*g), p.Name, left))
 				return nil
 			}
+			if res.Result == "ineligible" && res.Reason == reasonCLIVersion && !noUpdate {
+				if err := updateClaudeCode(cmd.Context()); err != nil {
+					return err
+				}
+				return i18n.E("err.reset_retry_after_update", p.Name)
+			}
 			return i18n.E("err.reset_refused", res.Result, orDash(res.Reason))
 		},
 	}
 	c.Flags().BoolVarP(&yes, "yes", "y", false, i18n.T("flag.yes"))
+	c.Flags().BoolVar(&noUpdate, "no-update", false, i18n.T("flag.no_claude_update"))
 	return c
 }
 

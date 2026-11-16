@@ -326,3 +326,45 @@ func TestParseRunArgs(t *testing.T) {
 		}
 	}
 }
+
+// A server that says Claude Code is too old gets `claude update` once, then
+// a fresh reading; --no-update leaves Claude Code alone.
+func TestResetsUpdateClaudeCode(t *testing.T) {
+	_, run, api := twoAccounts(t, "")
+	bin := t.TempDir()
+	log := filepath.Join(bin, "out")
+	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho \"$*\" >> "+log+"\n"), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	old := `,"cedar_ember":{"eligible":false,"ineligible_reason":"cli_version"}`
+	api.usage["alpha"] = usageBody(100, 100, old)
+	api.usage["beta"] = usageBody(10, 10, old)
+
+	if err := run("resets"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := os.ReadFile(log)
+	if string(out) != "update\n" {
+		t.Errorf("claude ran with %q, want one update", out)
+	}
+	if api.usageHits["alpha"] != 2 || api.usageHits["beta"] != 2 {
+		t.Errorf("status not read again after the update: %v", api.usageHits)
+	}
+
+	err := run("reset", "alpha", "-y")
+	if err == nil || !strings.Contains(err.Error(), "cli_version") {
+		t.Errorf("reset: %v", err)
+	}
+	if out, _ = os.ReadFile(log); string(out) != "update\nupdate\n" {
+		t.Errorf("reset did not update Claude Code: %q", out)
+	}
+
+	os.Remove(log)
+	run("resets", "--no-update")
+	run("reset", "alpha", "-y", "--no-update")
+	if _, err := os.Stat(log); err == nil {
+		t.Error("claude update ran under --no-update")
+	}
+	if len(api.claims) != 0 {
+		t.Errorf("claims sent: %v", api.claims)
+	}
+}

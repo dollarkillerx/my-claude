@@ -161,7 +161,7 @@ Claude Code reads an account's limit-reset status from the usage endpoint with `
 
 Alongside these, `next_grant_id` names the grant Claude Code would use next, and `cooldown_until` blocks claims until then. A claim is `POST https://api.anthropic.com/api/organizations/{org}/reset_rate_limits` with `{"program": "cedar_ember", "grant_id": …, "request_id": …}` and the account's OAuth token. `request_id` is random, so a retried request isn't counted twice. The answer's `result` is one of `reset`, `already_used`, `not_limited`, `cooldown`, `ineligible` or `unavailable`. cswitch only claims when you run `cswitch reset` and confirm.
 
-When the block says `eligible: false`, `ineligible_reason` says why (`tier`, `tenure`, `surface`, `mobile`, `cli_version`, `not_at_wall`, `extra_usage`, …), and `cswitch resets` explains the known ones. `surface` means the server offers resets only to Claude Code itself, so cswitch has nothing to list or claim; cswitch doesn't pretend to be Claude Code to get around that.
+When the block says `eligible: false`, `ineligible_reason` says why (`tier`, `tenure`, `surface`, `mobile`, `cli_version`, `not_at_wall`, `extra_usage`, …), and `cswitch resets` explains the known ones. `surface` means the server offers resets only to Claude Code itself, so cswitch has nothing to list or claim; cswitch doesn't pretend to be Claude Code to get around that. For `cli_version`, `resets` and `reset` run `claude update` once (output on stderr) and read the status again, unless `--no-update`; a claim refused with that reason also updates Claude Code, and says to run `reset` again, since nothing was used.
 
 ## Auto-switch
 

@@ -110,7 +110,7 @@ cswitch reset work        # use one (the one Claude Code would pick); asks to co
 cswitch reset work <id>   # use a specific one
 ```
 
-A used reset can't be given back, so cswitch never uses one on its own. `cswitch usage` mentions when an account has resets available.
+A used reset can't be given back, so cswitch never uses one on its own. `cswitch usage` mentions when an account has resets available. When the server says Claude Code is too old for resets (`cli_version`), `resets` and `reset` run `claude update` and check again; `--no-update` turns that off.
 
 ### Automatic switching
 
